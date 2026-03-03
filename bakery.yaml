@@ -1,0 +1,59 @@
+#######################################################################################################################
+# BAKERY REPOSITORY CONFIG
+#
+# This file is used to define global properties for builds inside a repo managed by Posit's Bakery tool.
+#######################################################################################################################
+
+# Define properties of the local repository. This information will be used when labeling image builds.
+repository:
+  url: "github.com/posit-dev/images-workbench"
+  vendor: "Posit Software, PBC"
+  maintainer: "Posit Docker Team <docker@posit.co>"
+  authors:
+    - name: Ian H. Pittwood
+      email: ian.pittwood@posit.co
+    - name: Ben Schwedler
+      email: ben@posit.co
+
+# Define image registries used by builds in this repository. Images will be tagged appropriately for each registry.
+# Logins for private registries should be managed independently of Bakery.
+registries:
+  - host: "ghcr.io"
+    namespace: "posit-dev"
+
+images:
+  - name: workbench-for-google-cloud-workstations
+    displayName: "Workbench for Google Cloud Workstations"
+    description: "A container image for use with Google Cloud Workstations, based on the Posit Workbench image 
+      with additional tools and configurations for use in the Google Cloud Workstations environment."
+    documentationUrl: "https://docs.cloud.google.com/workstations/docs/develop-code-using-posit-workbench-rstudio"
+    dependencyConstraints:
+      - dependency: R
+        constraint:
+          latest: true
+      - dependency: python
+        constraint:
+          latest: true
+    variants:
+      - name: Standard
+        extension: std
+        tagDisplayName: std
+        primary: true
+        options:
+          - tool: goss
+            wait: 30
+            command: "/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+      - name: Minimal
+        extension: min
+        tagDisplayName: min
+    versions:
+      - name: "2026.01.1+403.pro11"
+        subpath: "2026.01"
+        os:
+          - name: Ubuntu 24.04
+            primary: true
+        dependencies:
+          - dependency: R
+            version: 4.5.2
+          - dependency: python
+            version: 3.14.2
