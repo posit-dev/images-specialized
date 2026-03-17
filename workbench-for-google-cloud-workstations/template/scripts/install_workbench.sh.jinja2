@@ -1,0 +1,32 @@
+{#-
+Below are imports for Bakery's macros. If any are unneeded, they can be removed.
+Bakery handles bootstrapping the files into template rendering.
+-#}
+{%- import "apt.j2" as apt -%}
+#!/bin/bash
+set -euo pipefail
+
+# Output delimiter
+d="===="
+
+# Update apt repositories
+apt-get update -yq
+
+{% if Image.IsDevelopmentVersion -%}
+# Fetch Workbench debian package
+echo "$d Fetching Posit Workbench package {{ Image.Version }} $d"
+curl -fsSL "${DOWNLOAD_URL}" -o /tmp/workbench.deb
+
+# Install Workbench
+echo "$d Install Posit Workbench {{ Image.Version }} $d"
+apt-get install -yf /tmp/workbench.deb
+rm -f /tmp/workbench.deb
+{%- else -%}
+echo "$d Install Posit Workbench {{ Image.Version }} $d"
+
+RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1 apt-get install -yf rstudio-server={{ Image.Version }}
+apt-mark hold rstudio-server
+{%- endif %}
+
+# Clean up
+{{ apt.clean_command() }}

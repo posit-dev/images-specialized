@@ -1,0 +1,251 @@
+{%- import "apt.j2" as apt -%}
+{%- import "python.j2" as python -%}
+{%- import "r.j2" as r -%}
+{%- import "wait-for-it.j2" as waitforit -%}
+user:
+  rstudio-server:
+    exists: true
+
+group:
+  rstudio-server:
+    exists: true
+
+package:
+  rstudio-server:
+    installed: true
+    versions:
+    - {{ Image.Version }}
+  {% for r_version in Dependencies.R %}
+  r-{{ r_version }}:
+    installed: true
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  {% endfor %}
+  rstudio-drivers:
+    installed: true
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  # Necessary for `tlmgr` to work properly
+  perl:
+    installed: true
+
+port:
+  tcp:80:
+    listening: true
+    ip:
+      - 0.0.0.0
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+
+process:
+  rserver:
+    running: true
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  rserver-launche:
+    running: true
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+
+file:
+  /etc/rstudio-server/license.lic:
+    exists: false
+  /usr/lib/rstudio-server:
+    exists: true
+  {% for r_version in Dependencies.R %}
+  {{ r.get_version_directory(r_version) }}/bin/R:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    filetype: file
+  {% endfor %}
+  {% for python_version in Dependencies.python %}
+  {{ python.get_version_directory(python_version) }}/bin/python:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+  {% endfor %}
+  /opt/python/jupyter/bin/python:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    filetype: symlink
+  /opt/python/jupyter/bin/jupyter:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+  /usr/local/bin/jupyter:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+  /usr/lib/rstudio-server/bin/rserver:
+    exists: true
+  /usr/lib/rstudio-server/bin/rstudio-server:
+    exists: true
+  /usr/lib/rstudio-server/bin/rstudio-launcher:
+    exists: true
+  /var/lib/rstudio-server/monitor/log:
+    exists: true
+    owner: rstudio-server
+    group: rstudio-server
+  /usr/lib/rstudio-server/bin/pwb-code-server/bin/code-server:
+    exists: true
+  # Old code-server location
+  /usr/lib/rstudio-server/bin/code-server/bin/code-server:
+    exists: false
+  /etc/rstudio/vscode.conf:
+    exists: true
+  /etc/rstudio/jupyter.conf:
+    exists: true
+    contents:
+    - --LabApp.token=""
+    - --no-browser
+    - --allow-root
+    - --ip=0.0.0.0
+  /etc/rstudio/rserver.conf:
+    exists: true
+    contents:
+    - www-port=80
+    - launcher-sessions-callback-address=http://0.0.0.0:80
+    - auth-proxy=1
+    - auth-proxy-sign-in-url=http://localhost:80/
+    - auth-proxy-user-header=x-custom-user-name
+  /etc/rstudio/nginx.site.conf:
+    exists: true
+    contents:
+    - proxy_set_header X-CUSTOM-USER-NAME user/google;
+  /etc/rstudio/vscode.extensions.conf:
+    exists: true
+    contents:
+    - quarto.quarto
+    - GoogleCloudTools.cloudcode
+  /etc/pam.d/common-session:
+    exists: true
+    contents:
+      - "/^session required pam_mkhomedir.so skel=/etc/skel umask=0077$/"
+  /etc/sssd/sssd.conf:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    owner: root
+    group: root
+    mode: "0600"
+  /usr/local/bin/wait-for-it.sh:
+    exists: true
+    owner: root
+    group: root
+    mode: "0755"
+  /etc/workstation-startup.d/010_add-user.sh:
+    exists: true
+    owner: root
+    group: root
+    mode: "0755"
+    filetype: file
+    contents: [
+      "useradd -m user"
+    ]
+  /etc/workstation-startup.d/110_config-jupyter.sh:
+    exists: true
+    owner: root
+    group: root
+    mode: "0755"
+    filetype: file
+    contents: [
+      # Checks that we're setting the Jupyter shell to /bin/bash
+      "echo \"c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash']}\" > /home/user/.jupyter/jupyter_notebook_config.py"
+    ]
+  /etc/workstation-startup.d/120_start-workbench.sh:
+    exists: true
+    owner: root
+    group: root
+    mode: "0755"
+    filetype: file
+    contents: [
+      "/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+    ]
+  /usr/local/bin/quarto:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    filetype: symlink
+  /usr/local/bin/tex:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    filetype: symlink
+    linked-to: /opt/.TinyTeX/bin/x86_64-linux/tex
+    mode: "0777"
+  /usr/local/bin/pdflatex:
+    exists: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}{% endraw %}
+    filetype: symlink
+    linked-to: /opt/.TinyTeX/bin/x86_64-linux/pdflatex
+    mode: "0777"
+
+
+command:
+  # Check OS release version (early heads up in case the base image is modified)
+  Check OS version is "noble":
+    exec: "lsb_release -cs"
+    exit-status: 0
+    stdout: [
+      "noble"
+    ]
+  Test Workbench Monitor rstudio-server.log creation:
+    exec: su rstudio-server -c 'touch /var/lib/rstudio-server/monitor/log/rstudio-server.log'
+    exit-status: 0
+  Test rstudio-server.log creation:
+    exec: touch /var/log/rstudio-server.log
+    exit-status: 0
+  Check RStudio Workbench version is {{ Image.Version }}:
+    exec: rstudio-server version
+    exit-status: 0
+    stdout: [
+       "{{ Image.Version }}",
+       "Workbench"
+     ]
+  Test Jupyter works:
+    exec: "echo '{ \"cells\": [], \"metadata\": {}, \"nbformat\": 4, \"nbformat_minor\": 2}' | /opt/python/jupyter/bin/jupyter nbconvert --to notebook --stdin --stdout"
+    timeout: 60000
+    exit-status: 0
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  Check primary Python is version {{ Dependencies.python.0 }}:
+    exec: {{ python.get_version_directory(Dependencies.python.0) }}/bin/python --version
+    timeout: 60000
+    exit-status: 0
+    stdout: [
+      "{{Dependencies.python.0}}"
+    ]
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  Check Jupyter venv uses Python {{ Dependencies.python.0 }}:
+    exec: /opt/python/jupyter/bin/python --version
+    timeout: 60000
+    exit-status: 0
+    stdout: [
+        "{{ Dependencies.python.0 }}"
+    ]
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  Check for OpenSSL:
+    exec: which openssl
+    exit-status: 0
+    stdout: [
+      "/usr/bin/openssl"
+    ]
+  {% raw %}{{ $image_variant := .Env.IMAGE_VARIANT }}{% endraw %}
+  {% raw %}{{ $py_package_list_path := printf "%s/deps/python_requirements.txt" .Env.IMAGE_VERSION_MOUNT }}{% endraw %}
+  {% for python_version in Dependencies.python -%}
+  {{ "{{" }} $py_package_list := readFile $py_package_list_path | splitList "\n" {{ "}}" }}
+  {% raw %}{{- range $py_package_list }}{% endraw %}
+  Check Python {{ python_version }} has {{ "{{.}}" }} installed:
+    exec: {{ python.get_version_directory(python_version) }}/bin/pip show {{ "{{.}}" }}
+    timeout: 60000
+    exit-status: 0
+    skip: {% raw %}{{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  {% raw %}{{end}}{% endraw %}
+  {%- endfor %}
+  {% raw %}{{ $r_package_list_path := printf "%s/deps/r_packages.txt" .Env.IMAGE_VERSION_MOUNT }}{% endraw %}
+  {% for r_version in Dependencies.R -%}
+  {{ "{{" }} $r_package_list := readFile $r_package_list_path | splitList "\n" {{ "}}" }}
+  {% raw %}{{- range $r_package_list }}{% endraw %}
+  Check R {{ r_version }} has {{ "{{.}}" }} installed:
+    exec: {{ r.get_version_directory(r_version) }}/bin/R --slave -e "library(\"{{ "{{.}}" }}\")"
+    timeout: 60000
+    exit-status: 0
+    skip: {% raw %}{{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+  {% raw %}{{end}}{% endraw %}
+  {%- endfor %}
+
+# Ensure Quarto works
+  "/usr/local/bin/quarto check --quiet":
+    title: quarto_check
+    timeout: 120000
+    exit-status: 0
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+
+# Ensure TinyTeX is installed
+  "quarto list tools":
+    title: quarto_tinytex_installed
+    exit-status: 0
+    stderr:
+      - "/tinytex\\s+External Installation/"
+    skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
+# TODO: Reenable this once Quarto supports custom install locations for TinyTeX, see quarto-dev/quarto-cli#11800.
+#      - "/tinytex\\s+Up to date\\s+v\\d{4}\\.\\d{2}(\\.\\d{2})?\\s+v\\d{4}\\.\\d{2}(\\.\\d{2})?/"

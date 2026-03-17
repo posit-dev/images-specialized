@@ -1,0 +1,78 @@
+FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:public-image-current
+LABEL org.opencontainers.image.base.name="us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:public-image-current"
+
+### ARG declarations ###
+ARG DEBIAN_FRONTEND=noninteractive
+ARG WORKBENCH_VERSION="2026.01.1+403.pro11"
+
+### ENV declarations ###
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+### Setup environment ###
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY workbench-for-google-cloud-workstations/2026.01/deps/apt_packages.txt /tmp/apt_packages.txt
+
+RUN apt-get update -yqq --fix-missing && \
+    apt-get upgrade -yqq && \
+    apt-get dist-upgrade -yqq && \
+    apt-get autoremove -yqq --purge && \
+    apt-get install -yqq --no-install-recommends \
+        curl \
+        ca-certificates \
+        gnupg \
+        tar && \
+    bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
+    xargs -a /tmp/apt_packages.txt apt-get install -yqq --no-install-recommends && \
+    apt-get clean -yqq && \
+    rm -rf /var/lib/apt/lists/* && \
+    localedef -i en_US -f UTF-8 en_US.UTF-8
+
+### Install wait-for-it ###
+RUN curl -fsSL -o /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/rstudio/wait-for-it/master/wait-for-it.sh && \
+    chmod +x /usr/local/bin/wait-for-it.sh
+
+### Install Workbench 2026.01.1+403.pro11 ###
+COPY --chmod=0755 workbench-for-google-cloud-workstations/2026.01/scripts/install_workbench.sh /tmp/install_workbench.sh
+RUN \
+    /tmp/install_workbench.sh && \
+    rm -f /tmp/install_workbench.sh
+# Post install clean up in case any first startup files were created
+RUN rm -rf /var/lib/rstudio-server/r-versions && \
+    rm -rf /var/lib/rstudio-launcher/Local/jobs/* && \
+    rm -f /etc/rstudio/launcher.pem /etc/rstudio/launcher.pub
+
+### Install GCW License Manager ###
+RUN mkdir -p /opt/rstudio-license/ \
+    && mkdir -p /var/lib/rstudio-workbench \
+    && curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-gcpw-amd64-2026.01.1-403.pro14.tar.gz" |  \
+       tar xzvf - --strip 2 -C /opt/rstudio-license/ \
+    && chmod 0755 /opt/rstudio-license/license-manager \
+    && mv /opt/rstudio-license/license-manager /opt/rstudio-license/license-manager-orig \
+    && rm -f /usr/lib/rstudio-server/bin/license-manager
+
+
+
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/conf/license-manager/license-manager-shim /opt/rstudio-license/license-manager
+COPY --chmod=0775 workbench-for-google-cloud-workstations/2026.01/scripts/startup.sh /usr/local/bin/startup.sh
+COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/launcher/* /startup/launcher/
+COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/workbench/* /startup/base/
+COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+COPY workbench-for-google-cloud-workstations/2026.01/conf/rstudio/* /etc/rstudio/
+
+# GCW specific
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/scripts/workstation-startup/* /etc/workstation-startup.d/
+
+### Configure Workbench ###
+RUN mkdir -p /var/lib/rstudio-server/monitor/log \
+    && chown -R rstudio-server:rstudio-server /var/lib/rstudio-server/monitor \
+    && mkdir -p /startup/custom/ \
+    && mkdir -p /startup/user-provisioning/ \
+    && printf '\n# allow home directory creation\nsession required pam_mkhomedir.so skel=/etc/skel umask=0077\n' >> /etc/pam.d/common-session \
+    && echo "RSPM=https://p3m.dev/cran/__linux__/noble/latest" > /etc/rstudio/repos.conf \
+    && echo "CRAN=https://p3m.dev/cran/__linux__/noble/latest" >> /etc/rstudio/repos.conf
+
+EXPOSE 8787/tcp
+EXPOSE 5559/tcp

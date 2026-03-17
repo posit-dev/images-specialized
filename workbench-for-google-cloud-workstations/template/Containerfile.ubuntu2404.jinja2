@@ -1,0 +1,129 @@
+{#-
+Below are imports for Bakery's macros. If any are unneeded, they can be removed.
+Bakery handles bootstrapping the files into template rendering.
+-#}
+{%- import "apt.j2" as apt -%}
+{%- import "python.j2" as python -%}
+{%- import "quarto.j2" as quarto -%}
+{%- import "r.j2" as r -%}
+{%- import "wait-for-it.j2" as waitforit -%}
+
+{%- if Image.Variant != "Minimal" -%}
+# Build Python using uv in a separate stage
+{{ python.build_stage(Dependencies.python) }}
+
+{% endif -%}
+
+FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:public-image-current
+LABEL org.opencontainers.image.base.name="us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:public-image-current"
+
+### ARG declarations ###
+ARG DEBIAN_FRONTEND=noninteractive
+ARG WORKBENCH_VERSION="{{ Image.Version }}"
+
+### ENV declarations ###
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+### Setup environment ###
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY {{ Path.Version }}/deps/apt_packages.txt /tmp/apt_packages.txt
+{% if Image.Variant != "Minimal" %}COPY {{ Path.Version }}/deps/optional_apt_packages.txt /tmp/optional_apt_packages.txt{% endif %}
+RUN {{ apt.setup(clean = False) | indent(4) }} && \
+    {% if Image.Variant == "Minimal" -%}
+    {{ apt.install(files = ['/tmp/apt_packages.txt'], update = False) | indent(4) }} && \
+    {% else -%}
+    {{ apt.install(files = ['/tmp/apt_packages.txt', '/tmp/optional_apt_packages.txt'], update = False) | indent(4) }} && \
+    cp /opt/rstudio-drivers/odbcinst.ini.sample /etc/odbcinst.ini && \
+    {% endif -%}
+    localedef -i en_US -f UTF-8 en_US.UTF-8
+
+### Install wait-for-it ###
+{{ waitforit.run_install() }}
+
+### Install Workbench {{ Image.Version }} ###
+COPY --chmod=0755 {{ Path.Version }}/scripts/install_workbench.sh /tmp/install_workbench.sh
+RUN {% if Image.DownloadURL is defined %}DOWNLOAD_URL="{{ Image.DownloadURL }}" {% endif %}\
+    /tmp/install_workbench.sh && \
+    rm -f /tmp/install_workbench.sh
+# Post install clean up in case any first startup files were created
+RUN rm -rf /var/lib/rstudio-server/r-versions && \
+    rm -rf /var/lib/rstudio-launcher/Local/jobs/* && \
+    rm -f /etc/rstudio/launcher.pem /etc/rstudio/launcher.pub
+
+### Install GCW License Manager ###
+{% if Image.Version == "2026.01.1+403.pro11" %}{% set monitor_version = "2026.01.1-403.pro14" %}{% else %}{% set monitor_version = "${WORKBENCH_VERSION//+/-}" %}{% endif -%}
+RUN mkdir -p /opt/rstudio-license/ \
+    && mkdir -p /var/lib/rstudio-workbench \
+    && curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-gcpw-amd64-{{ monitor_version }}.tar.gz" |  \
+       tar xzvf - --strip 2 -C /opt/rstudio-license/ \
+    && chmod 0755 /opt/rstudio-license/license-manager \
+    && mv /opt/rstudio-license/license-manager /opt/rstudio-license/license-manager-orig \
+    && rm -f /usr/lib/rstudio-server/bin/license-manager
+
+{% if not Image.Variant == "Minimal" -%}
+### Install Quarto to PATH ###
+RUN ln -s /lib/rstudio-server/bin/quarto/bin/quarto /usr/local/bin/quarto
+
+### Install R ###
+{{ r.run_install(Dependencies.R) }}
+COPY {{ Path.Version }}/deps/r_packages.txt /tmp/r_packages.txt
+{{ r.run_install_packages(Dependencies.R, package_list_files = ['/tmp/r_packages.txt'], _os = Image.OS) }}
+
+### Install Python from previous stage ###
+{{ python.copy_from_build_stage() }}
+COPY {{ Path.Version }}/deps/python_requirements.txt /tmp/python_requirements.txt
+{{ python.run_install_packages(Dependencies.python, requirements_file = ['/tmp/python_requirements.txt']) }} && \
+    {{ python.symlink_version(Dependencies.python.0, "/opt/python/default") | indent(4) }}
+
+### Install Jupyter and Extensions ###
+RUN {{ python.get_version_directory(Dependencies.python.0) }}/bin/python -m venv /opt/python/jupyter && \
+    /opt/python/jupyter/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /opt/python/jupyter/bin/pip install --no-cache-dir 'jupyterlab<5' notebook 'pwb_jupyterlab<2' && \
+    ln -s /opt/python/jupyter/bin/jupyter /usr/local/bin/jupyter
+
+### Install Jupyter kernels ###
+{% for python_version in Dependencies.python -%}
+RUN {{ python.install_packages(python_version, "ipykernel") }} && \
+    {{ python.get_version_directory(python_version) }}/bin/python -m ipykernel install --user --name python{{ python_version }} --display-name "Python {{ python_version }}"
+
+{% endfor -%}
+
+### Install TinyTeX using Quarto ###
+# Caches won't invalidate correctly on new releases for TinyTeX installs. This ADD instruction is a workaround to bust
+# the cache on new releases.
+ADD https://api.github.com/repos/rstudio/tinytex-releases/releases/latest /tmp/tinytex-release.json
+RUN {{ quarto.install_tinytex_command("/lib/rstudio-server/bin/quarto/bin/quarto", True, "/opt") }} \
+    && rm -f /tmp/tinytex-release.json
+{%- endif %}
+
+COPY --chmod=755 {{ Path.Version }}/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
+COPY --chmod=755 {{ Path.Version }}/conf/license-manager/license-manager-shim /opt/rstudio-license/license-manager
+COPY --chmod=0775 {{ Path.Version }}/scripts/startup.sh /usr/local/bin/startup.sh
+COPY {{ Path.Version }}/conf/supervisor/launcher/* /startup/launcher/
+COPY {{ Path.Version }}/conf/supervisor/workbench/* /startup/base/
+COPY {{ Path.Version }}/conf/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+{%- if Image.Variant != "Minimal" %}
+COPY --chmod=600 {{ Path.Version }}/conf/sssd/sssd.conf /etc/sssd/sssd.conf
+COPY {{ Path.Version }}/conf/supervisor/user-provisioning/* /startup/user-provisioning/
+{%- endif %}
+COPY {{ Path.Version }}/conf/rstudio/* /etc/rstudio/
+
+# GCW specific
+COPY --chmod=755 {{ Path.Version }}/scripts/workstation-startup/* /etc/workstation-startup.d/
+{%- if Image.Variant != "Minimal" %}
+COPY --chmod=644 {{ Path.Version }}/conf/jupyter/jupyter_notebook_config.json /opt/python/jupyter/etc/jupyter/jupyter_notebook_config.json
+{%- endif %}
+
+### Configure Workbench ###
+RUN mkdir -p /var/lib/rstudio-server/monitor/log \
+    && chown -R rstudio-server:rstudio-server /var/lib/rstudio-server/monitor \
+    && mkdir -p /startup/custom/ \
+    && mkdir -p /startup/user-provisioning/ \
+    && printf '\n# allow home directory creation\nsession required pam_mkhomedir.so skel=/etc/skel umask=0077\n' >> /etc/pam.d/common-session \
+    && echo "RSPM={{ r.get_p3m_cran_repo(Image.OS) }}" > /etc/rstudio/repos.conf \
+    && echo "CRAN={{ r.get_p3m_cran_repo(Image.OS) }}" >> /etc/rstudio/repos.conf
+
+EXPOSE 8787/tcp
+EXPOSE 5559/tcp
