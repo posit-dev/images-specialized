@@ -7,9 +7,9 @@ d="===="
 # Update apt repositories
 apt-get update -yq
 
-echo "$d Install Posit Workbench 2026.01.1+403.pro11 $d"
+echo "$d Install Posit Workbench 2026.01.2+418.pro1 $d"
 
-RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1 apt-get install -yf rstudio-server=2026.01.1+403.pro11
+RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1 apt-get install -yf rstudio-server=2026.01.2+418.pro1
 apt-mark hold rstudio-server
 
 # Clean up

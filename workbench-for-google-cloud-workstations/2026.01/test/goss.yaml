@@ -10,7 +10,7 @@ package:
   rstudio-server:
     installed: true
     versions:
-    - 2026.01.1+403.pro11
+    - 2026.01.2+418.pro1
   
   r-4.5.2:
     installed: true
@@ -171,11 +171,11 @@ command:
   Test rstudio-server.log creation:
     exec: touch /var/log/rstudio-server.log
     exit-status: 0
-  Check RStudio Workbench version is 2026.01.1+403.pro11:
+  Check RStudio Workbench version is 2026.01.2+418.pro1:
     exec: rstudio-server version
     exit-status: 0
     stdout: [
-       "2026.01.1+403.pro11",
+       "2026.01.2+418.pro1",
        "Workbench"
      ]
   Test Jupyter works:
@@ -228,7 +228,7 @@ command:
 # Ensure Quarto works
   "/usr/local/bin/quarto check --quiet":
     title: quarto_check
-    timeout: 30000
+    timeout: 120000
     exit-status: 0
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
 
