@@ -45,6 +45,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     uses: "posit-dev/images-shared/.github/workflows/bakery-build.yml@add-gcp-auth-to-build"
     secrets:
