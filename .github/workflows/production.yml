@@ -46,9 +46,11 @@ jobs:
       contents: read
       packages: write
 
-    uses: "posit-dev/images-shared/.github/workflows/bakery-build.yml@main"
+    uses: "posit-dev/images-shared/.github/workflows/bakery-build.yml@add-gcp-auth-to-build"
     secrets:
       DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
     with:
       runs-on: ubuntu-latest-4x
       dev-versions: "exclude"
