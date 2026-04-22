@@ -27,6 +27,15 @@ images:
     description: "A container image for use with Google Cloud Workstations, based on the Posit Workbench image 
       with additional tools and configurations for use in the Google Cloud Workstations environment."
     documentationUrl: "https://docs.cloud.google.com/workstations/docs/develop-code-using-posit-workbench-rstudio"
+    extraRegistries:
+      - host: "us-central1-docker.pkg.dev"
+        namespace: "posit-images/cloud-workstations/workbench"
+      - host: "us-docker.pkg.dev"
+        namespace: "posit-images/cloud-workstations/workbench"
+      - host: "europe-docker.pkg.dev"
+        namespace: "posit-images/cloud-workstations/workbench"
+      - host: "asia-docker.pkg.dev"
+        namespace: "posit-images/cloud-workstations/workbench"
     dependencyConstraints:
       - dependency: R
         constraint:
