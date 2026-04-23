@@ -30,13 +30,17 @@ images:
     documentationUrl: "https://docs.cloud.google.com/workstations/docs/develop-code-using-posit-workbench-rstudio"
     extraRegistries:
       - host: "us-central1-docker.pkg.dev"
-        namespace: "posit-images/cloud-workstations/workbench"
+        namespace: "posit-images/cloud-workstations"
+        repository: "workbench"
       - host: "us-docker.pkg.dev"
-        namespace: "posit-images/cloud-workstations/workbench"
+        namespace: "posit-images/cloud-workstations"
+        repository: "workbench"
       - host: "europe-docker.pkg.dev"
-        namespace: "posit-images/cloud-workstations/workbench"
+        namespace: "posit-images/cloud-workstations"
+        repository: "workbench"
       - host: "asia-docker.pkg.dev"
-        namespace: "posit-images/cloud-workstations/workbench"
+        namespace: "posit-images/cloud-workstations"
+        repository: "workbench"
     dependencyConstraints:
       - dependency: R
         constraint:
