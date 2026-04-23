@@ -75,3 +75,33 @@ images:
     description: A professional integrated development environment for data 
       science teams using R and Python on Azure ML
     documentationUrl: https://posit.co/solutions/azure-ml
+    dependencyConstraints:
+      - dependency: R
+        constraint:
+          latest: true
+      - dependency: python
+        constraint:
+          latest: true
+    variants:
+      - name: Standard
+        extension: std
+        tagDisplayName: std
+        primary: true
+        options:
+          - tool: goss
+            wait: 30
+            command: "/usr/bin/supervisord -c /etc/supervisor/supervisord.conf"
+      - name: Minimal
+        extension: min
+        tagDisplayName: min
+    versions:
+      - name: "2026.01.1+403.pro11"
+        subpath: "2026.01"
+        os:
+          - name: Ubuntu 24.04
+            primary: true
+        dependencies:
+          - dependency: R
+            version: 4.5.3
+          - dependency: python
+            version: 3.14.4
