@@ -8,13 +8,10 @@ package_name="rstudio-server"
 # Update apt repositories
 apt-get update -yq
 
-RSW_VERSION_URL=$(echo -n "${RSW_VERSION}" | sed 's/+/-/g')
-deb_file="/tmp/rstudio-server.deb"
-echo "$d Fetching Posit Workbench ${RSW_VERSION} $d"
-curl -fsSL -o "$deb_file" "${RSW_DOWNLOAD_URL}/${RSW_NAME}-${RSW_VERSION_URL}-amd64.deb"
-# Post 7/25 packages
-gpg --keyserver hkps://keys.openpgp.org:443 --recv-keys 51C0B5BB19F92D60
-dpkg-sig --verify "$deb_file"
+echo "$d Fetching Posit Workbench 2026.01.2+418.pro1 $d"
+# For non-development versions, download the deb package using apt-get
+apt-get download "${package_name}=2026.01.2+418.pro1"
+deb_file="$(pwd)/$(ls ${package_name}*.deb)"
 
 # Install dependencies
 apt-get install -yq $(dpkg -I $deb_file | grep '^ Depends:' | sed 's/^ Depends: //' | tr ',' '\n' | awk '{print $1}' | tr -d '(')
@@ -31,7 +28,7 @@ awk '/if test "\$RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION" != "1"/ { skip=1 }
 ' "/var/lib/dpkg/info/rstudio-server.postinst" > "/var/lib/dpkg/info/rstudio-server.postinst.tmp" && mv "/var/lib/dpkg/info/rstudio-server.postinst.tmp" "/var/lib/dpkg/info/rstudio-server.postinst"
 
 # Install Workbench
-echo "$d Install Posit Workbench ${RSW_VERSION} $d"
+echo "$d Install Posit Workbench 2026.01.2+418.pro1 $d"
 dpkg --configure "${package_name}"
 apt-get install -yf
 rm -f "${deb_file}"
