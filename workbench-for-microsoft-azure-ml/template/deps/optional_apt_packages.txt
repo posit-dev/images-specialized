@@ -9,7 +9,6 @@ krb5-user
 libapparmor1
 libcairo2-dev
 libcap2
-libcurl4-gnutls-dev
 libcurl4-openssl-dev
 libedit2
 libfontconfig1-dev
@@ -17,7 +16,7 @@ libfreetype-dev
 libfribidi-dev
 libgdal-dev
 libgeos-dev
-libgl1-mesa-dev
+libgl-dev
 libglib2.0-0
 libglpk-dev
 libglu1-mesa-dev
