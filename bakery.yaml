@@ -95,7 +95,7 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: "2026.01.1+403.pro11"
+      - name: "2026.01.2+418.pro1"
         subpath: "2026.01"
         os:
           - name: Ubuntu 24.04

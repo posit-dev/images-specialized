@@ -11,7 +11,7 @@ Bakery handles bootstrapping the files into template rendering.
 # Build Python using uv in a separate stage
 {{ python.build_stage(Dependencies.python) }}
 
-FROM docker.io/library/ubuntu:24.04
+FROM docker.io/library/ubuntu:24.04 AS build
 LABEL org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04"
 
 ### ARG declarations ###
@@ -41,11 +41,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ## Install Apt Packages ###
 {% if not Image.Variant == "Minimal" -%}
 COPY {{ Path.Version }}/deps/apt_packages.txt /tmp/packages.txt
-COPY {{ Path.Version }}/deps/apt_optional_packages.txt /tmp/optional_packages.txt
+COPY {{ Path.Version }}/deps/optional_apt_packages.txt /tmp/optional_packages.txt
 {{ apt.run_install(files = ['/tmp/packages.txt', '/tmp/optional_packages.txt']) }} && \
     rm -f /tmp/packages.txt /tmp/optional_packages.txt
 {% else -%}
-COPY {{ Path.Version }}/deps/ubuntu-24.04_packages.txt /tmp/packages.txt
+COPY {{ Path.Version }}/deps/apt_packages.txt /tmp/packages.txt
 {{ apt.run_install(files = ['/tmp/packages.txt']) }} && \
     rm -f /tmp/packages.txt
 {%- endif %}
@@ -58,12 +58,13 @@ RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash \
 
 ### Install Workbench {{ Image.Version }} ###
 COPY --chmod=0755 {{ Path.Version }}/scripts/install_workbench.sh /tmp/install_workbench.sh
+{% set monitor_version = "${WORKBENCH_VERSION//+/-}" %}
 RUN {% if Image.DownloadURL is defined %}DOWNLOAD_URL="{{ Image.DownloadURL }}" {% endif %}\
     /tmp/install_workbench.sh && \
     rm -f /tmp/install_workbench.sh && \
     mkdir -p /opt/rstudio-license/ && \
     mkdir -p /var/lib/rstudio-workbench/ && \
-    curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/noble/rsp-monitor-workbench-azureml-amd64-${RSW_VERSION//+/-}.tar.gz" && \
+    curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-azureml-amd64-{{ monitor_version }}.tar.gz" \
     | tar xzvf - --strip 2 -C /opt/rstudio-license/ && \
     chmod 0755 /opt/rstudio-license/license-manager && \
     mv /opt/rstudio-license/license-manager /opt/rstudio-license/license-manager-orig && \
@@ -104,11 +105,11 @@ COPY {{ Path.Version }}/deps/r_packages.txt /tmp/r_packages.txt
 {%- endif %}
 
 ### Copy startup scripts and configuration files ###
-COPY --chmod=0755 license-manager-shim /opt/rstudio-license/license-manager
+COPY --chmod=0755 "{{ Path.Version }}/conf/license-manager/license-manager-shim" /opt/rstudio-license/license-manager
 COPY --chmod=0775 "{{ Path.Version }}/scripts/startup.sh" /usr/local/bin/startup.sh
-COPY "{{ Path.Version }}/startup/launcher" /startup/launcher
-COPY "{{ Path.Version }}/startup/base" /startup/base
-COPY "{{ Path.Version }}/startup/supervisord.conf" /etc/supervisor/supervisord.conf
+COPY "{{ Path.Version }}/conf/supervisor/supervisord.conf" /etc/supervisor/supervisord.conf
+COPY "{{ Path.Version }}/conf/supervisor/startup" /startup/base
+COPY "{{ Path.Version }}/conf/supervisor/startup-launcher" /startup/launcher
 COPY "{{ Path.Version }}/conf/jupyter/*" "{{ Path.Version }}/conf/launcher/*" "{{ Path.Version }}/conf/rstudio/*" "{{ Path.Version }}/conf/positron/*" "{{ Path.Version }}/conf/vscode/*" /etc/rstudio/
 COPY "{{ Path.Version }}/web/landing/*" /usr/lib/rstudio-server/www/
 
