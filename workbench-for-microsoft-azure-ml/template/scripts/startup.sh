@@ -25,31 +25,28 @@ verify_installation(){
    rstudio-server verify-installation --verify-user=$USER_NAME | tee $DIAGNOSTIC_DIR/verify.log
 }
 
-# Support RSP_ or RSW_ prefix
-RSP_LICENSE=${RSP_LICENSE:-${RSW_LICENSE}}
-RSP_LICENSE_SERVER=${RSP_LICENSE_SERVER:-${RSW_LICENSE_SERVER}}
+# Backward compatibility for RSW_ and RSP_ prefixes
+PWB_LICENSE=${PWB_LICENSE:-${RSW_LICENSE:-${RSP_LICENSE}}}
+PWB_LICENSE_SERVER=${PWB_LICENSE_SERVER:-${RSW_LICENSE_SERVER:-${RSP_LICENSE_SERVER}}}
+PWB_LICENSE_FILE_PATH=${PWB_LICENSE_FILE_PATH:-${RSW_LICENSE_FILE_PATH:-/etc/rstudio-server/license.lic}}
 
 # Activate License
-RSW_LICENSE_FILE_PATH=${RSW_LICENSE_FILE_PATH:-${RSP_LICENSE_FILE_PATH:-/etc/rstudio-server/license.lic}}
-if [ -n "$RSP_LICENSE" ]; then
-    ${LICENSE_MANAGER_PATH}/license-manager activate $RSP_LICENSE || true
-elif [ -n "$RSP_LICENSE_SERVER" ]; then
-    ${LICENSE_MANAGER_PATH}/license-manager license-server $RSP_LICENSE_SERVER || true
-elif test -f "${RSW_LICENSE_FILE_PATH}"; then
-    rm -f /var/lib/rstudio-server/*.lic
-    cp "${RSW_LICENSE_FILE_PATH}" /var/lib/rstudio-server/license.lic
-    chown rstudio-server /var/lib/rstudio-server/license.lic
-    chmod 600 /var/lib/rstudio-server/license.lic
-elif ls /var/lib/rstudio-server/*.lic >/dev/null 2>&1; then
-    echo "Detected a license file in /var/lib/rstudio-server/*.lic."
+PWB_LICENSE_FILE_PATH=${PWB_LICENSE_FILE_PATH:-/etc/rstudio-server/license.lic}
+if [ -n "$PWB_LICENSE" ]; then
+    /usr/lib/rstudio-server/bin/license-manager activate $PWB_LICENSE
+elif [ -n "$PWB_LICENSE_SERVER" ]; then
+    /usr/lib/rstudio-server/bin/license-manager license-server $PWB_LICENSE_SERVER
+elif test -f "$PWB_LICENSE_FILE_PATH"; then
+    /usr/lib/rstudio-server/bin/license-manager activate-file $PWB_LICENSE_FILE_PATH
 fi
 
 # ensure these cannot be inherited by child processes
+unset PWB_LICENSE
+unset PWB_LICENSE_SERVER
 unset RSP_LICENSE
 unset RSP_LICENSE_SERVER
 unset RSW_LICENSE
 unset RSW_LICENSE_SERVER
-unset RSW_LICENSE_FILE_PATH
 
 # Create one user
 if [ $(getent passwd $PUID) ] ; then
@@ -61,7 +58,7 @@ else
         groupadd -g $PGID $USER_NAME
         useradd -m -s /bin/bash -N -u $PUID -g $PGID $USER_NAME
 
-        # TODO: make sure that $USER_NAME is replaces azureuser in /etc/rstudio/nginx.site.conf
+        # TODO: make sure that $USER_NAME replaces azureuser in /etc/rstudio/nginx.site.conf
 
         if [ -n "$USER_PASSWORD" ] ; then
             echo "$USER_NAME:$USER_PASSWORD" | sudo chpasswd;
