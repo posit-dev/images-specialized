@@ -235,6 +235,7 @@ command:
 # Ensure TinyTeX is installed
   "quarto list tools":
     title: quarto_tinytex_installed
+    timeout: 120000
     exit-status: 0
     stderr:
       - "/tinytex\\s+External Installation/"
