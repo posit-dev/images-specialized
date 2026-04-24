@@ -66,10 +66,13 @@ else
     fi
 fi
 
+PWB_LAUNCHER=${PWB_LAUNCHER:-${RSW_LAUNCHER}}
+PWB_LAUNCHER_TIMEOUT=${PWB_LAUNCHER_TIMEOUT:-${RSW_LAUNCHER_TIMEOUT:-60}}
+
 # Start Launcher
-if [ "$RSW_LAUNCHER" == "true" ]; then
-  echo "Waiting for launcher to startup... to disable set RSW_LAUNCHER=false"
-  wait-for-it.sh localhost:5559 -t $RSW_LAUNCHER_TIMEOUT
+if [ "$PWB_LAUNCHER" == "true" ]; then
+  echo "Waiting for launcher to startup... to disable set PWB_LAUNCHER=false"
+  wait-for-it.sh localhost:5559 -t $PWB_LAUNCHER_TIMEOUT
 fi
 
 # Check diagnostic configurations

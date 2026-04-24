@@ -19,9 +19,10 @@ ARG RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1
 ENV STARTUP_DEBUG_MODE=0
 ENV PWB_LICENSE=""
 ENV PWB_LICENSE_SERVER=""
-ENV PWB_TESTUSER="azureuser"
-ENV PWB_TESTUSER_PASSWD=""
-ENV PWB_TESTUSER_UID=""
+ENV USER_NAME="azureuser"
+ENV USER_PASSWORD=""
+ENV PUID=1001
+ENV PGID=1001
 ENV PWB_LAUNCHER=true
 ENV PWB_LAUNCHER_TIMEOUT=10
 ENV DIAGNOSTIC_DIR=/var/log/rstudio
@@ -69,7 +70,7 @@ RUN \
     rm -f /tmp/install_workbench.sh && \
     mkdir -p /opt/rstudio-license/ && \
     mkdir -p /var/lib/rstudio-workbench/ && \
-    curl -fsL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-azureml-amd64-${WORKBENCH_VERSION//+/-}.tar.gz" \
+    curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-azureml-amd64-${WORKBENCH_VERSION//+/-}.tar.gz" \
     | tar xzvf - --strip 2 -C /opt/rstudio-license/ && \
     chmod 0755 /opt/rstudio-license/license-manager && \
     mv /opt/rstudio-license/license-manager /opt/rstudio-license/license-manager-orig && \
