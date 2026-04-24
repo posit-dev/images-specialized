@@ -2,7 +2,9 @@ user:
   rstudio-server:
     exists: true
     uid: 999
-    gid: 999
+    gid: {{ if and (eq .Env.IMAGE_VARIANT "Standard") (and (eq .Env.IMAGE_OS_NAME "ubuntu") (eq .Env.IMAGE_OS_VERSION "24.04")) }}997{{ else }}999{{ end }}
+    groups:
+      - rstudio-server
   # created in the startup script... and changeable by env var
   # but should still exist
   azureuser:
@@ -13,7 +15,7 @@ user:
 group:
   rstudio-server:
     exists: true
-    gid: 999
+    gid: {{ if and (eq .Env.IMAGE_VARIANT "Standard") (and (eq .Env.IMAGE_OS_NAME "ubuntu") (eq .Env.IMAGE_OS_VERSION "24.04")) }}997{{ else }}999{{ end }}
   azureuser:
     exists: true
     gid: 1001
@@ -21,177 +23,220 @@ group:
 package:
   rstudio-server:
     installed: true
-  # Necessary for `tlmgr` to work properly
-  perl:
+  
+  r-4.5.3:
     installed: true
-  # test all system packages
-  {{range .Vars.syspkgs}}
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  
+  {{ $apt_package_list_path := "/tmp/version/deps/apt_packages.txt" }}
+  {{ $apt_package_list := readFile $apt_package_list_path | splitList "\n" }}
+  {{- range $apt_package_list }}
   {{.}}:
-      installed: true
+    installed: true
   {{end}}
+  {{ if eq .Env.IMAGE_VARIANT "Standard" }}
+
+  {{ $apt_optional_package_list_path := "/tmp/version/deps/optional_apt_packages.txt" }}
+  {{ $apt_optional_package_list := readFile $apt_optional_package_list_path | splitList "\n" }}
+  {{- range $apt_optional_package_list }}
+  {{.}}:
+    installed: true
+  {{end}}
+  {{ end }}
 
 port:
+  # WARNING: This test may fail depending on how ipv6 is configured on the host
+  # Known Issue with goss: https://github.com/goss-org/goss/issues/149
   tcp:8787:
     listening: true
     ip:
     - 0.0.0.0
-    skip: false
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   tcp:5559:
     listening: true
     ip:
     - 127.0.0.1
-    skip: false
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
 
 process:
   rserver:
     running: true
-    skip: false
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  # The output from `ps` is trucated to 16 characters, so we check for `rstudio-launche` instead of `rstudio-launcher`
   rstudio-launche:
     running: true
-    skip: false
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
 
 file:
+  # Check that license files were not accidentally included in build
   /etc/rstudio-server/license.lic:
-    # currently does not exist
-    # be sure it is NOT a directory
     exists: false
+  # Check that the RStudio Server installation directory exists
   /usr/lib/rstudio-server:
     exists: true
-  /opt/python/{{.Env.PYTHON_VERSION}}/bin/python:
-    exists: true
-    filetype: symlink
-  /opt/python/{{.Env.PYTHON_VERSION_ALT}}/bin/python:
-    exists: true
-    filetype: symlink
-  /opt/python/jupyter/bin/python:
-    exists: true
-    filetype: symlink
-  /opt/python/jupyter/bin/jupyter:
-    exists: true
+  # Check for rserver executable
   /usr/lib/rstudio-server/bin/rserver:
     exists: true
+  # Check for rstudio-server executable
   /usr/lib/rstudio-server/bin/rstudio-server:
     exists: true
+  # Check for rstudio-launcher executable
   /usr/lib/rstudio-server/bin/rstudio-launcher:
     exists: true
+  # Check for rstudio-server monitor log directory
   /var/lib/rstudio-server/monitor/log:
     exists: true
     owner: rstudio-server
     group: rstudio-server
+  # Check for code-server executable (path varies based on RStudio Workbench version)
+  {{ $version_split := split "." "2026.01.2+418.pro1" }}
+  {{ if or (ge ($version_split._0 | atoi) 2025) (and (ge ($version_split._0 | atoi) 2024) (ge ($version_split._1 | atoi) 7)) }}
   /usr/lib/rstudio-server/bin/pwb-code-server/bin/code-server:
     exists: true
-  # Old code-server location
+  {{ else }}
   /usr/lib/rstudio-server/bin/code-server/bin/code-server:
-    exists: false
+    exists: true
+  {{ end }}
+  # Check for vscode.conf and ensure VS Code is enabled
   /etc/rstudio/vscode.conf:
     exists: true
-  /tmp/startup.log:
+    contents:
+      - "enabled=1"
+  # Check pam configuration for mkhomedir
+  /etc/pam.d/common-session:
     exists: true
-    contains:
-    - "!Error reading /etc/rstudio/rserver.conf:"
+    contents:
+      - "session required pam_mkhomedir.so skel=/etc/skel umask=0077"
+  # Check for sssd.conf
+  /etc/sssd/sssd.conf:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
+    owner: root
+    group: root
+    mode: "0600"
+  # Check for repos.conf
+  /etc/rstudio/repos.conf:
+    exists: true
+    contents:
+      - "RSPM=https://p3m.dev/cran/__linux__/{{ .Env.IMAGE_OS_CODENAME }}/latest"
+      - "CRAN=https://p3m.dev/cran/__linux__/{{ .Env.IMAGE_OS_CODENAME }}/latest"
+  # Check for symlinked Quarto executable
   /usr/local/bin/quarto:
     exists: true
     filetype: symlink
-  /opt/.TinyTeX:
-    exists: true
-    filetype: directory
-    mode: "0755"
-  /opt/.TinyTeX/bin/x86_64-linux/tlmgr:
-    exists: true
-    filetype: symlink
-    mode: "0777"
-    linked-to: ../../texmf-dist/scripts/texlive/tlmgr.pl
-  /opt/.TinyTeX/bin/x86_64-linux/tex:
-    exists: true
+  # Check for R installation
+  
+  /opt/R/4.5.3/bin/R:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: file
-    mode: "0755"
-  /opt/.TinyTeX/bin/x86_64-linux/pdflatex:
-    exists: true
+  
+  # Check for Python installation
+  
+  /opt/python/3.14.4/bin/python:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
+  
+  /opt/python/jupyter/bin/python:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
+  /opt/python/jupyter/bin/jupyter:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
+  /usr/local/bin/jupyter:
+    exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: symlink
-    linked-to: pdftex
-    mode: "0777"
-  /opt/.TinyTeX/bin/x86_64-linux/pdftex:
-    exists: true
-    filetype: file
-    mode: "0755"
-  /usr/local/bin/tex:
-    exists: true
-    filetype: symlink
-    linked-to: /opt/.TinyTeX/bin/x86_64-linux/tex
-    mode: "0777"
-  /usr/local/bin/pdflatex:
-    exists: true
-    filetype: symlink
-    linked-to: /opt/.TinyTeX/bin/x86_64-linux/pdflatex
-    mode: "0777"
+
+  # Check that job nodes are not created for the builder
+  /var/lib/rstudio-launcher/Local/jobs/buildkitsystem:
+    exists: false
+  /var/lib/rstudio-launcher/Local/jobs/buildkitsandbox:
+    exists: false
+
+  # Check that startup files were not accidentally included in build
+  # These can only be reliably checked for minimal variant for now, see #372
+  
+  {{ if eq .Env.IMAGE_VARIANT "Minimal" }}
+  /etc/rstudio/launcher.pem:
+    exists: false
+  /etc/rstudio/launcher.pub:
+    exists: false
+  /var/lib/rstudio-server/secure-cookie-key:
+    exists: false
+  /var/lib/rstudio-server/session-rpc-key:
+    exists: false
+  /etc/rstudio/secure-cookie-key:
+    exists: false
+  /etc/rstudio/session-rpc-key:
+    exists: false
+  /var/lib/rstudio-server/rstudio.sqlite:
+    exists: false
+  {{ end }}
+  
 
 command:
-  "su rstudio-server -c 'touch /var/lib/rstudio-server/monitor/log/rstudio-server.log'":
-    title: workbench_monitor_log_file_creates
+  "Ensure rstudio-server has permissions to log directory":
+    exec: su rstudio-server -c 'touch /var/lib/rstudio-server/monitor/log/rstudio-server.log'
     exit-status: 0
-# Check product version
-  "rstudio-server version":
-    title: workbench_version_matches
+  "Ensure server log can be created":
+    exec: touch /var/log/rstudio-server.log
     exit-status: 0
-    stdout: [
-       "{{ .Env.RSW_VERSION }}",
-       "Workbench"
-     ]
-  "echo '{ \"cells\": [], \"metadata\": {}, \"nbformat\": 4, \"nbformat_minor\": 2}' | /opt/python/jupyter/bin/jupyter nbconvert --to notebook --stdin --stdout":
-    title: jupyter_works
-    timeout: 60000
-    exit-status: 0
-# Ensure correct python version
-  "/opt/python/{{.Env.PYTHON_VERSION_ALT}}/bin/python --version":
-    title: alternate_python_version_matches
-    exit-status: 0
-    stdout: [
-        "{{.Env.PYTHON_VERSION_ALT}}"
-    ]
-# Ensure correct python version
-  "/opt/python/{{.Env.PYTHON_VERSION}}/bin/python --version":
-    title: python_version_matches
-    exit-status: 0
-    stdout: [
-      "{{.Env.PYTHON_VERSION}}"
-    ]
-  "/opt/python/jupyter/bin/python --version":
-    title: jupyter_python_version_matches
-    exit-status: 0
-    stdout: [
-        "{{.Env.PYTHON_VERSION_JUPYTER}}"
-    ]
-  "which openssl":
-    title: uses_system_openssl
-    exit-status: 0
-    stdout: [
-      "/usr/bin/openssl"
-    ]
-
-  # test all R versions and packages
-  {{ $rvers := mkSlice "/opt/R/4.1.3/bin/R" "/opt/R/4.2.3/bin/R" "/opt/R/4.3.3/bin/R" "/opt/R/4.4.3/bin/R" "/opt/R/4.5.2/bin/R"}}
-  {{ $pkgs := .Vars.packages}}
-  # loops the library command for each R version to ensure expected libraries exist for all.
-  # notably, it also ensures that each expected R version exists and is runnable
-  {{range $rver := $rvers }}
-  {{$rver}} --slave -e 'library()' | cut -f 1 -d ' ' | grep -v '^Packages$' | grep -v '^$':
+  "Verify Posit Workbench version":
+    exec: /usr/lib/rstudio-server/bin/rstudio-server version
     exit-status: 0
     stdout:
-    {{range $pkg := $pkgs}}
-      - {{ $pkg }}
-    {{end}}
-  {{end}}
-
-# Ensure Quarto works
-  "/usr/local/bin/quarto check --quiet":
-    title: quarto_check
+      - "2026.01.2+418.pro1 Workbench"
+  "Verify Jupyter Notebook works":
+    exec: "echo '{ \"cells\": [], \"metadata\": {}, \"nbformat\": 4, \"nbformat_minor\": 2}' | /opt/python/jupyter/bin/jupyter nbconvert --to notebook --stdin --stdout"
+    timeout: 60000
     exit-status: 0
-
-# Ensure TinyTeX is installed
-  "quarto list tools":
-    title: quarto_tinytex_installed
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  "Verify R installation is version 4.5.3":
+    exec: /opt/R/4.5.3/bin/R --version
+    exit-status: 0
+    stdout:
+      - "R version 4.5.3"
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  
+  "Verify Python installation is version 3.14.4":
+    exec: /opt/python/3.14.4/bin/python --version
+    exit-status: 0
+    stdout:
+      - "3.14.4"
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  
+  "Verify Jupyter installation Python version":
+    exec: /opt/python/jupyter/bin/python --version
+    exit-status: 0
+    stdout:
+      - "3.14.4"
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  "Verify system OpenSSL":
+    exec: which openssl
+    exit-status: 0
+    stdout:
+      - "/usr/bin/openssl"
+  "Verify Quarto":
+    exec: /usr/local/bin/quarto check --quiet
+    timeout: 120000
+    exit-status: 0
+  "Verify Quarto has TinyTeX installed":
+    exec: quarto list tools
     exit-status: 0
     stderr:
-      - "/tinytex\\s+External Installation/"
-# TODO: Reenable this once Quarto supports custom install locations for TinyTeX, see quarto-dev/quarto-cli#11800.
-#      - "/tinytex\\s+Up to date\\s+v\\d{4}\\.\\d{2}(\\.\\d{2})?\\s+v\\d{4}\\.\\d{2}(\\.\\d{2})?/"
+      - "/tinytex\\s+Up to date/"
+    skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
+  {{ $image_variant := .Env.IMAGE_VARIANT }}
+  {{ $py_package_list_path := printf "%s/deps/py_packages.txt" .Env.IMAGE_VERSION_MOUNT }}
+  {{ $py_package_list := readFile $py_package_list_path | splitList "\n" }}
+  {{- range $py_package_list }}
+  Check Python 3.14.4 has {{.}} installed:
+    exec: /opt/python/3.14.4/bin/pip show {{.}}
+    timeout: 60000
+    exit-status: 0
+    skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}
+  {{end}}
+  {{ $r_package_list_path := printf "%s/deps/r_packages.txt" .Env.IMAGE_VERSION_MOUNT }}
+  {{ $r_package_list := readFile $r_package_list_path | splitList "\n" }}
+  {{- range $r_package_list }}
+  Check R 4.5.3 has {{.}} installed:
+    exec: /opt/R/4.5.3/bin/R --slave -e "library(\"{{.}}\")"
+    timeout: 60000
+    exit-status: 0
+    skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}
+  {{end}}

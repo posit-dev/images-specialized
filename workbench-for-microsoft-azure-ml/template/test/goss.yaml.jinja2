@@ -35,7 +35,7 @@ package:
     skip: {% raw %}{{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}{% endraw %}
   {% endfor %}
   {% raw -%}
-  {{ $apt_package_list_path := printf "/tmp/version/deps/%s-%s_packages.txt" .Env.IMAGE_OS_NAME .Env.IMAGE_OS_VERSION }}
+  {{ $apt_package_list_path := "/tmp/version/deps/apt_packages.txt" }}
   {{ $apt_package_list := readFile $apt_package_list_path | splitList "\n" }}
   {{- range $apt_package_list }}
   {{.}}:
@@ -43,7 +43,7 @@ package:
   {{end}}
   {{ if eq .Env.IMAGE_VARIANT "Standard" }}
 
-  {{ $apt_optional_package_list_path := printf "/tmp/version/deps/%s-%s_optional_packages.txt" .Env.IMAGE_OS_NAME .Env.IMAGE_OS_VERSION }}
+  {{ $apt_optional_package_list_path := "/tmp/version/deps/optional_apt_packages.txt" }}
   {{ $apt_optional_package_list := readFile $apt_optional_package_list_path | splitList "\n" }}
   {{- range $apt_optional_package_list }}
   {{.}}:

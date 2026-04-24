@@ -30,7 +30,6 @@ libnss-sss
 libpam-sss
 libpng-dev
 libpq-dev
-libpq5
 libproj-dev
 libsm6
 libsodium-dev
@@ -48,10 +47,8 @@ oddjob-mkhomedir
 openssh-client
 perl
 python3
-rrdtool
 sssd
 strace
-supervisor
 tcl
 tk
 tk-dev
