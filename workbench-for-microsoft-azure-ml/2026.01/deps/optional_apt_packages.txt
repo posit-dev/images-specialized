@@ -17,7 +17,7 @@ libfribidi-dev
 libgdal-dev
 libgeos-dev
 libgl-dev
-libglib2.0-0
+libglib2.0-0t64
 libglpk-dev
 libglu1-mesa-dev
 libharfbuzz-dev
