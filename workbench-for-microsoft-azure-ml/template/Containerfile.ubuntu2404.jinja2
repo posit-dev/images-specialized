@@ -63,6 +63,8 @@ COPY --chmod=0755 {{ Path.Version }}/scripts/install_workbench.sh /tmp/install_w
 RUN {% if Image.DownloadURL is defined %}DOWNLOAD_URL="{{ Image.DownloadURL }}" {% endif %}\
     /tmp/install_workbench.sh && \
     rm -f /tmp/install_workbench.sh && \
+    echo "RSPM={{ r.get_p3m_cran_repo(Image.OS) }}" > /etc/rstudio/repos.conf && \
+    echo "CRAN={{ r.get_p3m_cran_repo(Image.OS) }}" >> /etc/rstudio/repos.conf && \
     mkdir -p /opt/rstudio-license/ && \
     mkdir -p /var/lib/rstudio-workbench/ && \
     curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-azureml-amd64-{{ monitor_version }}.tar.gz" \

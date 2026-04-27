@@ -68,6 +68,8 @@ COPY --chmod=0755 workbench-for-microsoft-azure-ml/2026.01/scripts/install_workb
 RUN \
     /tmp/install_workbench.sh && \
     rm -f /tmp/install_workbench.sh && \
+    echo "RSPM=https://p3m.dev/cran/__linux__/noble/latest" > /etc/rstudio/repos.conf && \
+    echo "CRAN=https://p3m.dev/cran/__linux__/noble/latest" >> /etc/rstudio/repos.conf && \
     mkdir -p /opt/rstudio-license/ && \
     mkdir -p /var/lib/rstudio-workbench/ && \
     curl -fsSL "https://s3.amazonaws.com/rstudio-ide-build/monitor/jammy/rsp-monitor-workbench-azureml-amd64-${WORKBENCH_VERSION//+/-}.tar.gz" \
