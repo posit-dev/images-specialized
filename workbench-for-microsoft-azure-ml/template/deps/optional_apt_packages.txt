@@ -31,6 +31,7 @@ libpam-sss
 libpng-dev
 libpq-dev
 libproj-dev
+libsecret-1-dev
 libsm6
 libsodium-dev
 libsqlite3-dev
