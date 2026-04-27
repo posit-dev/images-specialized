@@ -234,7 +234,7 @@ command:
 
 # Ensure TinyTeX is installed
   Check Quarto has TinyTeX installed:
-    command: "HOME='/opt' quarto list tools"
+    exec: "HOME='/opt' quarto list tools"
     timeout: 120000
     exit-status: 0
     stderr:
