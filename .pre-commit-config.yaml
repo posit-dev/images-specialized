@@ -23,6 +23,7 @@ repos:
         args: [--branch, main]
     -   id: pretty-format-json
         exclude: "^\\.claude/settings\\.json$"
+        args: ["--autofix", "--indent", "2"]
     -   id: trailing-whitespace
 -   repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.11.0
