@@ -4,8 +4,8 @@ FROM ghcr.io/astral-sh/uv:debian-slim AS python-builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 ENV UV_PYTHON_PREFERENCE=only-managed
-RUN uv python install 3.14.2
-RUN mv /opt/python/cpython-3.14.2-linux-*/ /opt/python/3.14.2
+RUN uv python install 3.14.4
+RUN mv /opt/python/cpython-3.14.4-linux-*/ /opt/python/3.14.4
 
 
 FROM us-central1-docker.pkg.dev/cloud-workstations-images/predefined/base:public-image-current
@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.base.name="us-central1-docker.pkg.dev/cloud-works
 
 ### ARG declarations ###
 ARG DEBIAN_FRONTEND=noninteractive
-ARG WORKBENCH_VERSION="2026.01.2+418.pro1"
+ARG WORKBENCH_VERSION="2026.04.0+526.pro2"
 
 ### ENV declarations ###
 ENV LANG=en_US.UTF-8
@@ -22,8 +22,8 @@ ENV LC_ALL=en_US.UTF-8
 
 ### Setup environment ###
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-COPY workbench-for-google-cloud-workstations/2026.01/deps/apt_packages.txt /tmp/apt_packages.txt
-COPY workbench-for-google-cloud-workstations/2026.01/deps/optional_apt_packages.txt /tmp/optional_apt_packages.txt
+COPY workbench-for-google-cloud-workstations/2026.04/deps/apt_packages.txt /tmp/apt_packages.txt
+COPY workbench-for-google-cloud-workstations/2026.04/deps/optional_apt_packages.txt /tmp/optional_apt_packages.txt
 RUN apt-get update -yqq --fix-missing && \
     apt-get upgrade -yqq && \
     apt-get dist-upgrade -yqq && \
@@ -45,8 +45,8 @@ RUN apt-get update -yqq --fix-missing && \
 RUN curl -fsSL -o /usr/local/bin/wait-for-it.sh https://raw.githubusercontent.com/rstudio/wait-for-it/master/wait-for-it.sh && \
     chmod +x /usr/local/bin/wait-for-it.sh
 
-### Install Workbench 2026.01.2+418.pro1 ###
-COPY --chmod=0755 workbench-for-google-cloud-workstations/2026.01/scripts/install_workbench.sh /tmp/install_workbench.sh
+### Install Workbench 2026.04.0+526.pro2 ###
+COPY --chmod=0755 workbench-for-google-cloud-workstations/2026.04/scripts/install_workbench.sh /tmp/install_workbench.sh
 RUN \
     /tmp/install_workbench.sh && \
     rm -f /tmp/install_workbench.sh
@@ -68,51 +68,51 @@ RUN mkdir -p /opt/rstudio-license/ \
 RUN ln -s /lib/rstudio-server/bin/quarto/bin/quarto /usr/local/bin/quarto
 
 ### Install R ###
-RUN RUN_UNATTENDED=1 R_VERSION=4.5.2 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
-    find . -type f -name '[rR]-4.5.2.*\.(deb|rpm)' -delete
-COPY workbench-for-google-cloud-workstations/2026.01/deps/r_packages.txt /tmp/r_packages.txt
-RUN /opt/R/4.5.2/bin/R --vanilla -e 'install.packages(readLines("/tmp/r_packages.txt"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)' && \
+RUN RUN_UNATTENDED=1 R_VERSION=4.6.0 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
+    find . -type f -name '[rR]-4.6.0.*\.(deb|rpm)' -delete
+COPY workbench-for-google-cloud-workstations/2026.04/deps/r_packages.txt /tmp/r_packages.txt
+RUN /opt/R/4.6.0/bin/R --vanilla -e 'install.packages(readLines("/tmp/r_packages.txt"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)' && \
     rm -f /tmp/r_packages.txt
 
 ### Install Python from previous stage ###
 COPY --from=python-builder /opt/python /opt/python
-COPY workbench-for-google-cloud-workstations/2026.01/deps/python_requirements.txt /tmp/python_requirements.txt
-RUN /opt/python/3.14.2/bin/pip install --no-cache-dir --upgrade --break-system-packages \
+COPY workbench-for-google-cloud-workstations/2026.04/deps/python_requirements.txt /tmp/python_requirements.txt
+RUN /opt/python/3.14.4/bin/pip install --no-cache-dir --upgrade --break-system-packages \
         -r /tmp/python_requirements.txt && \
     rm -f /tmp/python_requirements.txt && \
-    ln -s /opt/python/3.14.2 /opt/python/default
+    ln -s /opt/python/3.14.4 /opt/python/default
 
 ### Install Jupyter and Extensions ###
-RUN /opt/python/3.14.2/bin/python -m venv /opt/python/jupyter && \
+RUN /opt/python/3.14.4/bin/python -m venv /opt/python/jupyter && \
     /opt/python/jupyter/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
     /opt/python/jupyter/bin/pip install --no-cache-dir 'jupyterlab<5' notebook 'pwb_jupyterlab<2' && \
     ln -s /opt/python/jupyter/bin/jupyter /usr/local/bin/jupyter
 
 ### Install Jupyter kernels ###
-RUN /opt/python/3.14.2/bin/pip install --no-cache-dir --upgrade --break-system-packages \
+RUN /opt/python/3.14.4/bin/pip install --no-cache-dir --upgrade --break-system-packages \
     ipykernel && \
-    /opt/python/3.14.2/bin/python -m ipykernel install --user --name python3.14.2 --display-name "Python 3.14.2"
+    /opt/python/3.14.4/bin/python -m ipykernel install --user --name python3.14.4 --display-name "Python 3.14.4"
 
 ### Install TinyTeX using Quarto ###
 # Caches won't invalidate correctly on new releases for TinyTeX installs. This ADD instruction is a workaround to bust
 # the cache on new releases.
 ADD https://github.com/rstudio/tinytex-releases/releases/latest /tmp/tinytex-release.json
-RUN HOME="/opt" /lib/rstudio-server/bin/quarto/bin/quarto install tinytex --no-prompt --quiet --update-path \
+RUN GH_TOKEN="$([ -s /run/secrets/github_token ] && cat /run/secrets/github_token)" HOME="/opt" /lib/rstudio-server/bin/quarto/bin/quarto install tinytex --no-prompt --quiet --update-path \
     && rm -f /tmp/tinytex-release.json
 
-COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
-COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/conf/license-manager/license-manager-shim /opt/rstudio-license/license-manager
-COPY --chmod=0775 workbench-for-google-cloud-workstations/2026.01/scripts/startup.sh /usr/local/bin/startup.sh
-COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/launcher/* /startup/launcher/
-COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/workbench/* /startup/base/
-COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
-COPY --chmod=600 workbench-for-google-cloud-workstations/2026.01/conf/sssd/sssd.conf /etc/sssd/sssd.conf
-COPY workbench-for-google-cloud-workstations/2026.01/conf/supervisor/user-provisioning/* /startup/user-provisioning/
-COPY workbench-for-google-cloud-workstations/2026.01/conf/rstudio/* /etc/rstudio/
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.04/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.04/conf/license-manager/license-manager-shim /opt/rstudio-license/license-manager
+COPY --chmod=0775 workbench-for-google-cloud-workstations/2026.04/scripts/startup.sh /usr/local/bin/startup.sh
+COPY workbench-for-google-cloud-workstations/2026.04/conf/supervisor/launcher/* /startup/launcher/
+COPY workbench-for-google-cloud-workstations/2026.04/conf/supervisor/workbench/* /startup/base/
+COPY workbench-for-google-cloud-workstations/2026.04/conf/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
+COPY --chmod=600 workbench-for-google-cloud-workstations/2026.04/conf/sssd/sssd.conf /etc/sssd/sssd.conf
+COPY workbench-for-google-cloud-workstations/2026.04/conf/supervisor/user-provisioning/* /startup/user-provisioning/
+COPY workbench-for-google-cloud-workstations/2026.04/conf/rstudio/* /etc/rstudio/
 
 # GCW specific
-COPY --chmod=755 workbench-for-google-cloud-workstations/2026.01/scripts/workstation-startup/* /etc/workstation-startup.d/
-COPY --chmod=644 workbench-for-google-cloud-workstations/2026.01/conf/jupyter/jupyter_notebook_config.json /opt/python/jupyter/etc/jupyter/jupyter_notebook_config.json
+COPY --chmod=755 workbench-for-google-cloud-workstations/2026.04/scripts/workstation-startup/* /etc/workstation-startup.d/
+COPY --chmod=644 workbench-for-google-cloud-workstations/2026.04/conf/jupyter/jupyter_notebook_config.json /opt/python/jupyter/etc/jupyter/jupyter_notebook_config.json
 
 ### Configure Workbench ###
 RUN mkdir -p /var/lib/rstudio-server/monitor/log \

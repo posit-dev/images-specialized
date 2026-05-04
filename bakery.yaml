@@ -61,16 +61,17 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.01.2+418.pro1
-        subpath: '2026.01'
+      - name: 2026.04.0+526.pro2
+        subpath: '2026.04'
+        latest: true
         os:
           - name: Ubuntu 24.04
             primary: true
         dependencies:
           - dependency: R
-            version: 4.5.2
+            version: 4.6.0
           - dependency: python
-            version: 3.14.2
+            version: 3.14.4
   - name: workbench-for-microsoft-azure-ml
     description: A professional integrated development environment for data 
       science teams using R and Python on Azure ML
@@ -95,13 +96,14 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: "2026.01.2+418.pro1"
-        subpath: "2026.01"
+      - name: 2026.04.0+526.pro2
+        subpath: '2026.04'
+        latest: true
         os:
           - name: Ubuntu 24.04
             primary: true
         dependencies:
           - dependency: R
-            version: 4.5.3
+            version: 4.6.0
           - dependency: python
             version: 3.14.4
