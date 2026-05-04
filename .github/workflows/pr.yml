@@ -17,7 +17,6 @@ jobs:
     needs:
       - lint
       - production
-      - session
       - zizmor
     steps:
       - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe  # v1.2.2
@@ -50,15 +49,6 @@ jobs:
     with:
       dev-versions: "exclude"
       matrix-versions: "exclude"
-
-  session:
-    name: Session
-    permissions:
-      contents: read
-      packages: write
-    uses: posit-dev/images-shared/.github/workflows/bakery-build-pr.yml@main
-    with:
-      matrix-versions: "only"
 
   zizmor:
     name: Zizmor
