@@ -64,7 +64,7 @@ h6 {
 function check_for_service_up() {
     // make Ajax call here, inside the callback call:
     setTimeout(check_for_service_up, 1000);
-    
+
     const Http = new XMLHttpRequest();
     const url=window.location.href;
     Http.open("GET", url);

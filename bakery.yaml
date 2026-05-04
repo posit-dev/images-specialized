@@ -73,7 +73,7 @@ images:
           - dependency: python
             version: 3.14.4
   - name: workbench-for-microsoft-azure-ml
-    description: A professional integrated development environment for data 
+    description: A professional integrated development environment for data
       science teams using R and Python on Azure ML
     documentationUrl: https://posit.co/solutions/azure-ml
     dependencyConstraints:
