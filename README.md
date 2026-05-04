@@ -1,6 +1,6 @@
 # Posit Workbench Container Images for Specialized Environments
 
-Container images that package [Workbench](https://docs.posit.co/ide/server-pro) for specific managed cloud platforms. Each image is preconfigured for the host platform's authentication, storage, and lifecycle conventions, so it can be used directly as the workstation or compute image.
+Container images that package [Workbench](https://docs.posit.co/ide/server-pro) for specific managed cloud platforms. Each image arrives configured for the host platform's authentication, storage, and lifecycle conventions, so you can use it directly as the workstation or compute image.
 
 For the standard, non-platform-specific Workbench container images, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
 
@@ -20,7 +20,7 @@ See each image's documentation for the canonical registry, available tags, and p
 | [Docker](https://docs.docker.com/get-docker/) | Building and running containers locally | [Get Docker](https://docs.docker.com/get-docker/) |
 | Product license | Running Workbench | [Licensing FAQ](https://docs.posit.co/licensing/licensing-faq.html) |
 
-To consume the published images on their target platforms, follow the platform documentation linked above — no local Docker installation is required.
+To consume the published images on their target platforms, follow the platform documentation linked above. You do not need a local Docker installation.
 
 ## Building from source
 
@@ -31,7 +31,7 @@ You can interact with this repository in multiple ways:
 
 ## Build
 
-You can build OCI container images from the definitions in this repository using one of the following container build tools:
+You can build Open Container Initiative (OCI) container images from the definitions in this repository using one of the following container build tools:
 
 * [buildah](https://github.com/containers/buildah/blob/main/install.md)
 * [docker buildx](https://github.com/docker/buildx#installing)
