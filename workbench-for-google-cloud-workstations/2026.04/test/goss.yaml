@@ -10,9 +10,9 @@ package:
   rstudio-server:
     installed: true
     versions:
-    - 2026.01.2+418.pro1
+    - 2026.04.0+526.pro2
   
-  r-4.5.2:
+  r-4.6.0:
     installed: true
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   
@@ -44,12 +44,12 @@ file:
   /usr/lib/rstudio-server:
     exists: true
   
-  /opt/R/4.5.2/bin/R:
+  /opt/R/4.6.0/bin/R:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: file
   
   
-  /opt/python/3.14.2/bin/python:
+  /opt/python/3.14.4/bin/python:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
   
   /opt/python/jupyter/bin/python:
@@ -171,11 +171,11 @@ command:
   Test rstudio-server.log creation:
     exec: touch /var/log/rstudio-server.log
     exit-status: 0
-  Check RStudio Workbench version is 2026.01.2+418.pro1:
+  Check RStudio Workbench version is 2026.04.0+526.pro2:
     exec: rstudio-server version
     exit-status: 0
     stdout: [
-       "2026.01.2+418.pro1",
+       "2026.04.0+526.pro2",
        "Workbench"
      ]
   Test Jupyter works:
@@ -183,20 +183,20 @@ command:
     timeout: 60000
     exit-status: 0
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  Check primary Python is version 3.14.2:
-    exec: /opt/python/3.14.2/bin/python --version
+  Check primary Python is version 3.14.4:
+    exec: /opt/python/3.14.4/bin/python --version
     timeout: 60000
     exit-status: 0
     stdout: [
-      "3.14.2"
+      "3.14.4"
     ]
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  Check Jupyter venv uses Python 3.14.2:
+  Check Jupyter venv uses Python 3.14.4:
     exec: /opt/python/jupyter/bin/python --version
     timeout: 60000
     exit-status: 0
     stdout: [
-        "3.14.2"
+        "3.14.4"
     ]
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   Check for OpenSSL:
@@ -209,8 +209,8 @@ command:
   {{ $py_package_list_path := printf "%s/deps/python_requirements.txt" .Env.IMAGE_VERSION_MOUNT }}
   {{ $py_package_list := readFile $py_package_list_path | splitList "\n" }}
   {{- range $py_package_list }}
-  Check Python 3.14.2 has {{.}} installed:
-    exec: /opt/python/3.14.2/bin/pip show {{.}}
+  Check Python 3.14.4 has {{.}} installed:
+    exec: /opt/python/3.14.4/bin/pip show {{.}}
     timeout: 60000
     exit-status: 0
     skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}
@@ -218,8 +218,8 @@ command:
   {{ $r_package_list_path := printf "%s/deps/r_packages.txt" .Env.IMAGE_VERSION_MOUNT }}
   {{ $r_package_list := readFile $r_package_list_path | splitList "\n" }}
   {{- range $r_package_list }}
-  Check R 4.5.2 has {{.}} installed:
-    exec: /opt/R/4.5.2/bin/R --slave -e "library(\"{{.}}\")"
+  Check R 4.6.0 has {{.}} installed:
+    exec: /opt/R/4.6.0/bin/R --slave -e "library(\"{{.}}\")"
     timeout: 60000
     exit-status: 0
     skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}

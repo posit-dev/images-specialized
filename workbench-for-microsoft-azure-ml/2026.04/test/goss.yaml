@@ -24,7 +24,7 @@ package:
   rstudio-server:
     installed: true
   
-  r-4.5.3:
+  r-4.6.0:
     installed: true
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   
@@ -89,7 +89,7 @@ file:
     owner: rstudio-server
     group: rstudio-server
   # Check for code-server executable (path varies based on RStudio Workbench version)
-  {{ $version_split := split "." "2026.01.2+418.pro1" }}
+  {{ $version_split := split "." "2026.04.0+526.pro2" }}
   {{ if or (ge ($version_split._0 | atoi) 2025) (and (ge ($version_split._0 | atoi) 2024) (ge ($version_split._1 | atoi) 7)) }}
   /usr/lib/rstudio-server/bin/pwb-code-server/bin/code-server:
     exists: true
@@ -114,7 +114,7 @@ file:
     filetype: symlink
   # Check for R installation
   
-  /opt/R/4.5.3/bin/R:
+  /opt/R/4.6.0/bin/R:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: file
   
@@ -170,17 +170,17 @@ command:
     exec: /usr/lib/rstudio-server/bin/rstudio-server version
     exit-status: 0
     stdout:
-      - "2026.01.2+418.pro1 Workbench"
+      - "2026.04.0+526.pro2 Workbench"
   "Verify Jupyter Notebook works":
     exec: "echo '{ \"cells\": [], \"metadata\": {}, \"nbformat\": 4, \"nbformat_minor\": 2}' | /opt/python/jupyter/bin/jupyter nbconvert --to notebook --stdin --stdout"
     timeout: 60000
     exit-status: 0
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  "Verify R installation is version 4.5.3":
-    exec: /opt/R/4.5.3/bin/R --version
+  "Verify R installation is version 4.6.0":
+    exec: /opt/R/4.6.0/bin/R --version
     exit-status: 0
     stdout:
-      - "R version 4.5.3"
+      - "R version 4.6.0"
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   
   "Verify Python installation is version 3.14.4":
@@ -224,8 +224,8 @@ command:
   {{ $r_package_list_path := printf "%s/deps/r_packages.txt" .Env.IMAGE_VERSION_MOUNT }}
   {{ $r_package_list := readFile $r_package_list_path | splitList "\n" }}
   {{- range $r_package_list }}
-  Check R 4.5.3 has {{.}} installed:
-    exec: /opt/R/4.5.3/bin/R --slave -e "library(\"{{.}}\")"
+  Check R 4.6.0 has {{.}} installed:
+    exec: /opt/R/4.6.0/bin/R --slave -e "library(\"{{.}}\")"
     timeout: 60000
     exit-status: 0
     skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}
