@@ -61,6 +61,12 @@ The workstation runtime manages user authentication, home-directory persistence,
 | 8787 | HTTP web interface |
 | 5559 | Job Launcher      |
 
+## Licensing
+
+This image requires a Workbench for Google Cloud Workstations license. A standard Workbench license does not work with this image.
+
+For licensing inquiries, see the [Posit Google Cloud solutions page](https://posit.co/solutions/google-cloud).
+
 ## Caveats
 
 ### Security

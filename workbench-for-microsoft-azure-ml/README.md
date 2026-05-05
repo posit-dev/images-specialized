@@ -94,6 +94,12 @@ The image also accepts legacy `RSW_` and `RSP_` license variables (`RSW_LICENSE`
 | 8787 | HTTP web interface |
 | 5559 | Job Launcher       |
 
+## Licensing
+
+This image requires a Workbench for Azure Machine Learning license. A standard Workbench license does not work with this image.
+
+For licensing inquiries, see the [Posit Azure ML solutions page](https://posit.co/solutions/azure-ml).
+
 ## Caveats
 
 ### Security
