@@ -35,6 +35,7 @@ You can build Open Container Initiative (OCI) container images from the definiti
 
 * [buildah](https://github.com/containers/buildah/blob/main/install.md)
 * [docker buildx](https://github.com/docker/buildx#installing)
+* [podman](https://podman.io/docs/installation)
 
 Each Containerfile uses the root of the repository as its build context. The [`bakery.yaml`](https://github.com/posit-dev/images-shared/blob/main/posit-bakery/CONFIGURATION.md#bakery-configuration) project file is in the root of this repository.
 
