@@ -11,11 +11,11 @@ package:
     installed: true
     versions:
     - 2026.04.0+526.pro2
-  
+
   r-4.6.0:
     installed: true
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  
+
   rstudio-drivers:
     installed: true
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
@@ -43,15 +43,15 @@ file:
     exists: false
   /usr/lib/rstudio-server:
     exists: true
-  
+
   /opt/R/4.6.0/bin/R:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: file
-  
-  
+
+
   /opt/python/3.14.4/bin/python:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
-  
+
   /opt/python/jupyter/bin/python:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
     filetype: symlink
