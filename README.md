@@ -17,10 +17,10 @@ See each image's documentation for the canonical registry, available tags, and p
 
 | Tool | Required for | Install |
 |------|--------------|---------|
-| [Docker](https://docs.docker.com/get-docker/) | Building and running containers locally | [Get Docker](https://docs.docker.com/get-docker/) |
+| Container build tool | Building images locally | [Docker](https://docs.docker.com/get-docker/), [Podman](https://podman.io/docs/installation), or [Buildah](https://github.com/containers/buildah/blob/main/install.md) |
 | Product license | Running Workbench | [Licensing FAQ](https://docs.posit.co/licensing/licensing-faq.html) |
 
-To consume the published images on their target platforms, follow the platform documentation linked above. You do not need a local Docker installation.
+To consume the published images on their target platforms, follow the platform documentation linked above. You do not need any local container tooling.
 
 ## Building from source
 
