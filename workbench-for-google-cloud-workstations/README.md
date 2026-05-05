@@ -21,13 +21,13 @@ Posit publishes the image to Google Artifact Registry. Pull from the location cl
 | Europe            | `europe-docker.pkg.dev/posit-images/cloud-workstations/workbench`  |
 | Asia              | `asia-docker.pkg.dev/posit-images/cloud-workstations/workbench`    |
 
-A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations) for inspection and local builds.
+A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
 
 ## Image variants
 
 | Variant | Description |
 |---------|-------------|
-| `std` (Standard) | Opinionated image with R, Python, Jupyter, and Workbench preinstalled. Runs as a workstation out of the box. |
+| `std` (Standard) | Opinionated image with R, Python, Jupyter, and Workbench preinstalled. Runs out of the box. |
 | `min` (Minimal)  | Smaller image you can extend with your own R, Python, and system dependencies. Will not run as-is. |
 
 ## Image tags
@@ -43,14 +43,14 @@ Browse the [Artifact Registry repository](https://us-docker.pkg.dev/posit-images
 
 ## Installed software
 
-| Component  | Path                                                                    |
-|------------|-------------------------------------------------------------------------|
-| Workbench  | `/usr/lib/rstudio-server/`                                              |
-| R          | `/opt/R/{version}/bin/R`                                                |
+| Component  | Path                                                                     |
+|------------|--------------------------------------------------------------------------|
+| Workbench  | `/usr/lib/rstudio-server/`                                               |
+| R          | `/opt/R/{version}/bin/R`                                                 |
 | Python     | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
-| JupyterLab | `/opt/python/jupyter/bin/jupyter`                                       |
-| Quarto     | `/usr/local/bin/quarto`                                                 |
-| TinyTeX    | Quarto installs at build time                                           |
+| JupyterLab | `/opt/python/jupyter/bin/jupyter`                                        |
+| Quarto     | `/usr/local/bin/quarto`                                                  |
+| TinyTeX    | `/opt/.TinyTeX`                                                          |
 
 The workstation runtime manages user authentication, home-directory persistence, and the Workbench license. For details, see the Google documentation linked above.
 
