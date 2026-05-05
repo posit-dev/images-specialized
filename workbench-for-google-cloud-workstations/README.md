@@ -21,6 +21,8 @@ Posit publishes the image to Google Artifact Registry. Pull from the location cl
 | Europe            | `europe-docker.pkg.dev/posit-images/cloud-workstations/workbench`  |
 | Asia              | `asia-docker.pkg.dev/posit-images/cloud-workstations/workbench`    |
 
+You can browse the US Central repository from the web at [`https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench`](https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench) to view available tags.
+
 A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
 
 ## Image variants
