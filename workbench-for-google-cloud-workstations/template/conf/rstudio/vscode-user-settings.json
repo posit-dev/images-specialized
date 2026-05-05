@@ -1,5 +1,5 @@
 {
-      "terminal.integrated.defaultProfile.linux": "bash",
-      "extensions.autoUpdate": false,
-      "extensions.autoCheckUpdates": false
+  "extensions.autoCheckUpdates": false,
+  "extensions.autoUpdate": false,
+  "terminal.integrated.defaultProfile.linux": "bash"
 }

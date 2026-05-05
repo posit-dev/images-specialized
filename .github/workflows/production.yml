@@ -1,30 +1,19 @@
 name: Production
 on:
+  workflow_dispatch:
+
   schedule:
     # Weekly rebuild of all images, to pick up any upstream changes.
     - cron: "15 3 * * 0" # At 03:15 on Sunday
-
-  pull_request:
 
   push:
     branches:
       - main
 
+
 concurrency:
-  # Only cancel in-progress runs for pull_request events, this prevents cancelling workflows against main or tags
-  # A pull_request will reuse the same group thus enabling cancelation, all others receive a unique run_id
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash
-
-# Security policy: No ${{ }} expressions in `run:` blocks.
-# All expression values are assigned to `env:` and referenced as
-# shell variables. This prevents script injection from runtime values
-# (matrix outputs, secrets) and keeps the rule enforceable by zizmor
-# without per-expression exceptions.
 
 jobs:
   ci:
@@ -36,14 +25,22 @@ jobs:
     if: always()
 
     runs-on: ubuntu-latest
+    permissions: {}
     timeout-minutes: 10
     needs:
       - build
 
     steps:
-      - uses: re-actors/alls-green@release/v1
+      - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe  # v1.2.2
+        id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
+      - if: always() && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
+        with:
+          result: ${{ steps.alls-green.outcome }}
+          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   matrix:
     name: Image Matrix
@@ -66,7 +63,7 @@ jobs:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
         run: |
-          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" | jq --compact-output .)" >> $GITHUB_OUTPUT
+          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
 
   build:
     name: "${{ matrix.img.image }}:${{ matrix.img.version }}"
@@ -103,14 +100,14 @@ jobs:
 
       - name: Authenticate to GCP
         id: gcp-auth
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Configure Docker for GCP Artifact Registry
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev,us-docker.pkg.dev,europe-docker.pkg.dev,asia-docker.pkg.dev --quiet
 
@@ -151,7 +148,7 @@ jobs:
 
       - name: Push
         # Push images only for merges into main and weekly scheduled re-builds.
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
         env:
           GIT_SHA: ${{ github.sha }}
           IMAGE_NAME: ${{ matrix.img.image }}

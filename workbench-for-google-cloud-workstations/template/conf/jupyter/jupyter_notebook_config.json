@@ -1,15 +1,19 @@
 {
   "NotebookApp": {
-    "nbserver_extensions":{
+    "nbserver_extensions": {
       "rsconnect_jupyter": true
     },
     "terminado_settings": {
-      "shell_command": ["/bin/bash"]
+      "shell_command": [
+        "/bin/bash"
+      ]
     }
   },
   "ServerApp": {
     "terminado_settings": {
-      "shell_command": ["/bin/bash"]
+      "shell_command": [
+        "/bin/bash"
+      ]
     }
   }
 }
