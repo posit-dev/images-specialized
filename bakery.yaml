@@ -6,7 +6,7 @@
 
 # Define properties of the local repository. This information will be used when labeling image builds.
 repository:
-  url: "github.com/posit-dev/images-workbench"
+  url: "github.com/posit-dev/images-specialized"
   vendor: "Posit Software, PBC"
   maintainer: "Posit Docker Team <docker@posit.co>"
   authors:
