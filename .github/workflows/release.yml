@@ -130,3 +130,31 @@ jobs:
               bakery remove version "$IMAGE" "$OLD_VERSION"
             fi
           done
+
+      - name: Update READMEs
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          DISPLAY_VERSION: ${{ steps.parse.outputs.display_version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          TAG_VERSION: ${{ steps.parse.outputs.tag_version }}
+          OLD_DISPLAY: ${{ steps.capture.outputs.old_display }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+          OLD_TAG: ${{ steps.capture.outputs.old_tag }}
+        run: |
+          # Pass 1: Replace full registry-tag form (most specific).
+          # e.g. 2026.01.2-418.pro1 -> 2026.05.0-527.pro2
+          # Must run before pass 2 so the build identifier is rewritten as a unit.
+          find . -name 'README.md' -not -path './.git/*' \
+            -exec sed -i "s/${OLD_TAG}/${TAG_VERSION}/g" {} +
+
+          # Pass 2: Replace any remaining display-version references.
+          # e.g. 2026.01.2 -> 2026.05.0
+          find . -name 'README.md' -not -path './.git/*' \
+            -exec sed -i "s/${OLD_DISPLAY}/${DISPLAY_VERSION}/g" {} +
+
+          # Pass 3: Replace edition references, but only when the edition
+          # actually changed (avoids unintended rewrites within the same edition).
+          if [ "$OLD_EDITION" != "$EDITION" ]; then
+            find . -name 'README.md' -not -path './.git/*' \
+              -exec sed -i "s/${OLD_EDITION}/${EDITION}/g" {} +
+          fi
