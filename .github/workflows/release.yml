@@ -104,3 +104,29 @@ jobs:
             echo "old_build=$OLD_BUILD"
             echo "old_tag=$OLD_TAG"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Replace versions
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.parse.outputs.version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          OLD_VERSION: ${{ steps.capture.outputs.old_version }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+        run: |
+          IMAGES="workbench-for-google-cloud-workstations workbench-for-microsoft-azure-ml"
+
+          for IMAGE in $IMAGES; do
+            if [ "$OLD_EDITION" = "$EDITION" ]; then
+              # Same-edition patch: in-place rename preserves dependency
+              # pins (R/Python/Quarto) so a patch release does not silently
+              # re-resolve dependencies.
+              echo "Patching $IMAGE: $OLD_VERSION -> $VERSION"
+              bakery update version "$IMAGE" "$VERSION" --target-version "$OLD_VERSION"
+            else
+              # Edition bump: create the new version (dependencies re-resolve
+              # per dependencyConstraints), then remove the old one.
+              echo "Replacing $IMAGE: $OLD_VERSION -> $VERSION (subpath=$EDITION)"
+              bakery create version "$IMAGE" "$VERSION" --subpath "$EDITION" --mark-latest
+              bakery remove version "$IMAGE" "$OLD_VERSION"
+            fi
+          done
