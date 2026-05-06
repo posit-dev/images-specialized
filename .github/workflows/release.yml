@@ -61,3 +61,46 @@ jobs:
             echo "build=$BUILD"
             echo "tag_version=$TAG_VERSION"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Capture old version
+        id: capture
+        env:
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          # Both managed images stay in lockstep, so reading from one is
+          # authoritative. Capturing here, before any mutation, avoids stale
+          # reads later in the loop.
+          OLD_VERSION=$(bakery get version workbench-for-google-cloud-workstations 2>/dev/null || true)
+
+          if [ -z "$OLD_VERSION" ]; then
+            echo "No existing version found. Aborting."
+            exit 1
+          fi
+
+          OLD_DISPLAY="${OLD_VERSION%%[+-]*}"
+          OLD_EDITION="${OLD_DISPLAY%.*}"
+          OLD_REST="${OLD_VERSION#"$OLD_DISPLAY"}"
+          OLD_BUILD="${OLD_REST#?}"
+
+          if [ -n "$OLD_BUILD" ]; then
+            OLD_TAG="${OLD_DISPLAY}-${OLD_BUILD}"
+          else
+            OLD_TAG="$OLD_DISPLAY"
+          fi
+
+          if [ "$OLD_VERSION" = "$VERSION" ]; then
+            CHANGED=false
+            echo "Current version ($OLD_VERSION) matches requested version. Nothing to do."
+          else
+            CHANGED=true
+            echo "Will replace $OLD_VERSION -> $VERSION"
+          fi
+
+          {
+            echo "changed=$CHANGED"
+            echo "old_version=$OLD_VERSION"
+            echo "old_display=$OLD_DISPLAY"
+            echo "old_edition=$OLD_EDITION"
+            echo "old_build=$OLD_BUILD"
+            echo "old_tag=$OLD_TAG"
+          } >> "$GITHUB_OUTPUT"
