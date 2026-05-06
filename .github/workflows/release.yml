@@ -33,3 +33,31 @@ jobs:
 
       - name: Install bakery
         uses: "posit-dev/images-shared/setup-bakery@main"
+
+      - name: Parse version
+        id: parse
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          DISPLAY_VERSION="${VERSION%%[+-]*}"
+          EDITION="${DISPLAY_VERSION%.*}"
+
+          # Build identifier is the substring after `+` (or `-`).
+          # When the input has no separator, BUILD is empty.
+          REST="${VERSION#"$DISPLAY_VERSION"}"
+          BUILD="${REST#?}"
+
+          if [ -n "$BUILD" ]; then
+            TAG_VERSION="${DISPLAY_VERSION}-${BUILD}"
+          else
+            TAG_VERSION="$DISPLAY_VERSION"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "display_version=$DISPLAY_VERSION"
+            echo "edition=$EDITION"
+            echo "build=$BUILD"
+            echo "tag_version=$TAG_VERSION"
+          } >> "$GITHUB_OUTPUT"
