@@ -3,7 +3,6 @@ results
 .dev-*
 bakery-bake.json
 .bakery-bake.json
-.idea
 
 ### Python template
 # Byte-compiled / optimized / DLL files
@@ -167,4 +166,7 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
+
+# Claude
+docs/superpowers
