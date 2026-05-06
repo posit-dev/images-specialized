@@ -158,3 +158,38 @@ jobs:
             find . -name 'README.md' -not -path './.git/*' \
               -exec sed -i "s/${OLD_EDITION}/${EDITION}/g" {} +
           fi
+
+      - name: Create pull request
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          DISPLAY_VERSION: ${{ steps.parse.outputs.display_version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          OLD_VERSION: ${{ steps.capture.outputs.old_version }}
+          OLD_DISPLAY: ${{ steps.capture.outputs.old_display }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+        run: |
+          BRANCH="release/${DISPLAY_VERSION}"
+          git fetch origin "$BRANCH" 2>/dev/null || true
+          git checkout -B "$BRANCH"
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Release ${DISPLAY_VERSION}"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          BODY="Updates Workbench to version \`${VERSION}\`."
+          BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml"
+          BODY+=$'\n'"**Replaces:** \`${OLD_VERSION}\` → \`${VERSION}\`"
+          if [ "$OLD_EDITION" != "$EDITION" ]; then
+            BODY+=$'\n'"**Edition bump:** \`${OLD_EDITION}\` → \`${EDITION}\` (dependencies re-resolved)"
+          else
+            BODY+=$'\n'"**Same-edition patch:** dependency pins preserved"
+          fi
+
+          gh pr create \
+            --title "Release ${DISPLAY_VERSION}" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH" || echo "PR already exists"
