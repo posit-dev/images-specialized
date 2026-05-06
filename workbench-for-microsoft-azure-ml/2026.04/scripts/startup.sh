@@ -33,11 +33,11 @@ PWB_LICENSE_FILE_PATH=${PWB_LICENSE_FILE_PATH:-${RSW_LICENSE_FILE_PATH:-/etc/rst
 # Activate License
 PWB_LICENSE_FILE_PATH=${PWB_LICENSE_FILE_PATH:-/etc/rstudio-server/license.lic}
 if [ -n "$PWB_LICENSE" ]; then
-    /usr/lib/rstudio-server/bin/license-manager activate "$PWB_LICENSE"
+    "${LICENSE_MANAGER_PATH}"/license-manager activate "$PWB_LICENSE"
 elif [ -n "$PWB_LICENSE_SERVER" ]; then
-    /usr/lib/rstudio-server/bin/license-manager license-server "$PWB_LICENSE_SERVER"
+    "${LICENSE_MANAGER_PATH}"/license-manager license-server "$PWB_LICENSE_SERVER"
 elif test -f "$PWB_LICENSE_FILE_PATH"; then
-    /usr/lib/rstudio-server/bin/license-manager activate-file "$PWB_LICENSE_FILE_PATH"
+    "${LICENSE_MANAGER_PATH}"/license-manager activate-file "$PWB_LICENSE_FILE_PATH"
 fi
 
 # ensure these cannot be inherited by child processes
