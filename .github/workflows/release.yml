@@ -1,0 +1,195 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Workbench version (e.g. 2026.05.0+527.pro2)"
+        required: true
+        type: string
+
+# Security policy: No ${{ }} expressions in `run:` blocks.
+# All expression values are assigned to `env:` and referenced as
+# shell variables. This prevents script injection from runtime values
+# and keeps the rule enforceable by zizmor without per-expression exceptions.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: GitHub App Token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3  # v3.1.1
+        id: app-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install bakery
+        uses: "posit-dev/images-shared/setup-bakery@main"
+
+      - name: Parse version
+        id: parse
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          DISPLAY_VERSION="${VERSION%%[+-]*}"
+          EDITION="${DISPLAY_VERSION%.*}"
+
+          # Build identifier is the substring after `+` (or `-`).
+          # When the input has no separator, BUILD is empty.
+          REST="${VERSION#"$DISPLAY_VERSION"}"
+          BUILD="${REST#?}"
+
+          if [ -n "$BUILD" ]; then
+            TAG_VERSION="${DISPLAY_VERSION}-${BUILD}"
+          else
+            TAG_VERSION="$DISPLAY_VERSION"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "display_version=$DISPLAY_VERSION"
+            echo "edition=$EDITION"
+            echo "build=$BUILD"
+            echo "tag_version=$TAG_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Capture old version
+        id: capture
+        env:
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          # Both managed images stay in lockstep, so reading from one is
+          # authoritative. Capturing here, before any mutation, avoids stale
+          # reads later in the loop.
+          OLD_VERSION=$(bakery get version workbench-for-google-cloud-workstations 2>/dev/null || true)
+
+          if [ -z "$OLD_VERSION" ]; then
+            echo "No existing version found. Aborting."
+            exit 1
+          fi
+
+          OLD_DISPLAY="${OLD_VERSION%%[+-]*}"
+          OLD_EDITION="${OLD_DISPLAY%.*}"
+          OLD_REST="${OLD_VERSION#"$OLD_DISPLAY"}"
+          OLD_BUILD="${OLD_REST#?}"
+
+          if [ -n "$OLD_BUILD" ]; then
+            OLD_TAG="${OLD_DISPLAY}-${OLD_BUILD}"
+          else
+            OLD_TAG="$OLD_DISPLAY"
+          fi
+
+          if [ "$OLD_VERSION" = "$VERSION" ]; then
+            CHANGED=false
+            echo "Current version ($OLD_VERSION) matches requested version. Nothing to do."
+          else
+            CHANGED=true
+            echo "Will replace $OLD_VERSION -> $VERSION"
+          fi
+
+          {
+            echo "changed=$CHANGED"
+            echo "old_version=$OLD_VERSION"
+            echo "old_display=$OLD_DISPLAY"
+            echo "old_edition=$OLD_EDITION"
+            echo "old_build=$OLD_BUILD"
+            echo "old_tag=$OLD_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Replace versions
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.parse.outputs.version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          OLD_VERSION: ${{ steps.capture.outputs.old_version }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+        run: |
+          IMAGES="workbench-for-google-cloud-workstations workbench-for-microsoft-azure-ml"
+
+          for IMAGE in $IMAGES; do
+            if [ "$OLD_EDITION" = "$EDITION" ]; then
+              # Same-edition patch: in-place rename preserves dependency
+              # pins (R/Python/Quarto) so a patch release does not silently
+              # re-resolve dependencies.
+              echo "Patching $IMAGE: $OLD_VERSION -> $VERSION"
+              bakery update version "$IMAGE" "$VERSION" --target-version "$OLD_VERSION"
+            else
+              # Edition bump: create the new version (dependencies re-resolve
+              # per dependencyConstraints), then remove the old one.
+              echo "Replacing $IMAGE: $OLD_VERSION -> $VERSION (subpath=$EDITION)"
+              bakery create version "$IMAGE" "$VERSION" --subpath "$EDITION" --mark-latest
+              bakery remove version "$IMAGE" "$OLD_VERSION"
+            fi
+          done
+
+      - name: Update READMEs
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          DISPLAY_VERSION: ${{ steps.parse.outputs.display_version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          TAG_VERSION: ${{ steps.parse.outputs.tag_version }}
+          OLD_DISPLAY: ${{ steps.capture.outputs.old_display }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+          OLD_TAG: ${{ steps.capture.outputs.old_tag }}
+        run: |
+          # Pass 1: Replace full registry-tag form (most specific).
+          # e.g. 2026.01.2-418.pro1 -> 2026.05.0-527.pro2
+          # Must run before pass 2 so the build identifier is rewritten as a unit.
+          find . -name 'README.md' -not -path './.git/*' \
+            -exec sed -i "s/${OLD_TAG}/${TAG_VERSION}/g" {} +
+
+          # Pass 2: Replace any remaining display-version references.
+          # e.g. 2026.01.2 -> 2026.05.0
+          find . -name 'README.md' -not -path './.git/*' \
+            -exec sed -i "s/${OLD_DISPLAY}/${DISPLAY_VERSION}/g" {} +
+
+          # Pass 3: Replace edition references, but only when the edition
+          # actually changed (avoids unintended rewrites within the same edition).
+          if [ "$OLD_EDITION" != "$EDITION" ]; then
+            find . -name 'README.md' -not -path './.git/*' \
+              -exec sed -i "s/${OLD_EDITION}/${EDITION}/g" {} +
+          fi
+
+      - name: Create pull request
+        if: steps.capture.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.parse.outputs.version }}
+          DISPLAY_VERSION: ${{ steps.parse.outputs.display_version }}
+          EDITION: ${{ steps.parse.outputs.edition }}
+          OLD_VERSION: ${{ steps.capture.outputs.old_version }}
+          OLD_DISPLAY: ${{ steps.capture.outputs.old_display }}
+          OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
+        run: |
+          BRANCH="release/${DISPLAY_VERSION}"
+          git fetch origin "$BRANCH" 2>/dev/null || true
+          git checkout -B "$BRANCH"
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Release ${DISPLAY_VERSION}"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          BODY="Updates Workbench to version \`${VERSION}\`."
+          BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml"
+          BODY+=$'\n'"**Replaces:** \`${OLD_VERSION}\` → \`${VERSION}\`"
+          if [ "$OLD_EDITION" != "$EDITION" ]; then
+            BODY+=$'\n'"**Edition bump:** \`${OLD_EDITION}\` → \`${EDITION}\` (dependencies re-resolved)"
+          else
+            BODY+=$'\n'"**Same-edition patch:** dependency pins preserved"
+          fi
+
+          gh pr create \
+            --title "Release ${DISPLAY_VERSION}" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH" || echo "PR already exists"
