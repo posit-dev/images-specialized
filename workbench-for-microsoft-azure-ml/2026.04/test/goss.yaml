@@ -158,6 +158,14 @@ file:
   {{ end }}
 
 
+  # Check that Nginx configs are included
+  /etc/rstudio/nginx.site.conf:
+    exists: true
+  /etc/rstudio/nginx.server.conf:
+    exists: true
+  /etc/rstudio/nginx.http.conf:
+    exists: true
+
 command:
   "Ensure rstudio-server has permissions to log directory":
     exec: su rstudio-server -c 'touch /var/lib/rstudio-server/monitor/log/rstudio-server.log'
