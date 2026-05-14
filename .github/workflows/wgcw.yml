@@ -122,13 +122,15 @@ jobs:
           IMAGE_VERSION: ${{ matrix.img.version }}
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
+          CACHE_REGISTRY: "us-central1-docker.pkg.dev/cloud-workstations-cache"
         run: |
           bakery build --load --pull \
             --retry 1 \
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --cache-registry "$CACHE_REGISTRY"
 
       - name: Test
         env:
