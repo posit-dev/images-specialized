@@ -17,7 +17,7 @@ This container image packages [Workbench](https://docs.posit.co/ide/server-pro/)
 ![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/size?color=%230e80c0&tag=latest&label=image+size&trim=)
 
 > [!IMPORTANT]
-> Running this image in environments other than Azure ML compute instances is not supported or recommended. If you are looking for the standard Workbench image, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
+> Posit does not support or recommend running this image in environments other than Azure ML compute instances. If you are looking for the standard Workbench image, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
 
 ## Quick reference
 
@@ -58,7 +58,7 @@ Browse the [package page](https://github.com/posit-dev/images-specialized/pkgs/c
 
 ## Image tags
 
-Tags follow `{version}-{os}[-{variant}]`. For example:
+Tags follow `{version}-{os}[-{variant}]`. The following are valid examples:
 
 - `2026.01.2-418.pro1-ubuntu-24.04`: Standard variant on Ubuntu 24.04
 - `2026.01.2-418.pro1-ubuntu-24.04-std`: Standard variant (explicit)

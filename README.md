@@ -1,4 +1,4 @@
-# Posit Workbench Container Images for Specialized Environments
+# Posit Workbench container images for specialized environments
 
 Container images that package [Workbench](https://docs.posit.co/ide/server-pro) for specific managed cloud platforms. Each image arrives configured for the host platform's authentication, storage, and lifecycle conventions, so you can use it directly as the workstation or compute image.
 
@@ -68,14 +68,14 @@ podman build \
 
 This repository follows the structure described in [bakery usage](https://github.com/posit-dev/images-shared/tree/main/posit-bakery#usage).
 
-Additional documentation:
+The following additional documentation is available:
 - [Configuration Reference](https://github.com/posit-dev/images-shared/blob/main/posit-bakery/CONFIGURATION.md): `bakery.yaml` schema and options
 - [Templating Reference](https://github.com/posit-dev/images-shared/blob/main/posit-bakery/TEMPLATING.md): Jinja2 macros for Containerfile templates
 - [CI Workflows](https://github.com/posit-dev/images-shared/blob/main/CI.md): shared GitHub Actions workflows for building and pushing images
 
 ### Prerequisites
 
-Build prerequisites:
+The following build prerequisites are required:
 
 * [python](https://docs.astral.sh/uv/guides/install-python/)
 * [uv](https://docs.astral.sh/uv/getting-started/installation/)

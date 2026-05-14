@@ -48,7 +48,7 @@ Posit publishes the image to Google Artifact Registry. Pull from the location cl
 
 You can browse the US Central repository from the web at [`https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench`](https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench) to view available tags.
 
-A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
+Posit also publishes a mirror at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
 
 ## Image variants
 
@@ -59,7 +59,7 @@ A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-wor
 
 ## Image tags
 
-Tags follow `{version}-{os}[-{variant}]`. For example:
+Tags follow `{version}-{os}[-{variant}]`. The following are valid examples:
 
 - `2026.01.2-418.pro1-ubuntu-24.04`: Standard variant on Ubuntu 24.04
 - `2026.01.2-418.pro1-ubuntu-24.04-std`: Standard variant (explicit)
