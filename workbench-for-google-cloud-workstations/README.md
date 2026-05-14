@@ -11,7 +11,7 @@
 This container image packages [Workbench](https://docs.posit.co/ide/server-pro/) as a [Google Cloud Workstations](https://cloud.google.com/workstations) configuration image. It builds on the predefined Google workstation base image and adds Workbench, R, Python, Jupyter, and the workstation startup hooks needed to launch Workbench when a user starts their workstation.
 
 [![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/workbench-for-google-cloud-workstations)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/production.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/production.yml)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/wgcw.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/wgcw.yml)
 [![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-google-cloud-workstations/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://hub.docker.com/r/posit/workbench/tags)
 ![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-shared%2Fworkbench-for-google-cloud-workstations&query=%24.downloadCount&label=ghcr.io%20pulls)
 ![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-google-cloud-workstations/size?color=%230e80c0&tag=latest&label=image+size&trim=)
