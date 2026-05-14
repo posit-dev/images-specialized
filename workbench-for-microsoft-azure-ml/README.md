@@ -11,10 +11,10 @@
 This container image packages [Workbench](https://docs.posit.co/ide/server-pro/) as a custom application image for [Azure Machine Learning compute instances](https://learn.microsoft.com/en-us/azure/machine-learning/concept-compute-instance). It includes Workbench, R, Python, Jupyter, the Azure CLI with the `ml` extension, and the user-provisioning glue Azure ML expects.
 
 [![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/workbench-for-microsoft-azure-ml)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/production.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/production.yml)
-[![Latest Version](https://img.shields.io/docker/v/posit/workbench?sort=semver&label=latest)](https://hub.docker.com/r/posit/workbench/tags)
-![Docker Hub Pulls](https://img.shields.io/docker/pulls/posit/workbench)
-![Docker Image Size](https://img.shields.io/docker/image-size/posit/workbench/latest)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
+[![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://hub.docker.com/r/posit/workbench/tags)
+![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-shared%2Fworkbench-for-microsoft-azure-ml&query=%24.downloadCount&label=ghcr.io%20pulls)
+![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/size?color=%230e80c0&tag=latest&label=image+size&trim=)
 
 > [!IMPORTANT]
 > Running this image in environments other than Azure ML compute instances is not supported or recommended. If you are looking for the standard Workbench image, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).

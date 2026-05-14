@@ -4,6 +4,9 @@ Container images that package [Workbench](https://docs.posit.co/ide/server-pro) 
 
 For the standard, non-platform-specific Workbench container images, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
 
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/wgcw.yml?branch=main&label=workbench-for-google-cloud-workstations+build)](https://github.com/posit-dev/images-specialized/actions/workflows/wgcw.yml)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main&label=workbench-for-microsoft-azure-ml+build)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
+
 ## Images
 
 | Image | Platform | Platform documentation |
