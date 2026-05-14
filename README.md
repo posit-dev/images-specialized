@@ -115,3 +115,11 @@ We invite you to join us on [GitHub Discussions](https://github.com/posit-dev/im
 ## Issues
 
 If you encounter any issues or have any questions, please [open an issue](https://github.com/posit-dev/images-specialized/issues). We appreciate your feedback.
+
+## Code of Conduct
+
+We expect all contributors to adhere to the project's [Code of Conduct](CODE_OF_CONDUCT.md) and create a positive and inclusive community.
+
+## License
+
+Posit licenses these container images and associated tooling under the [MIT License](LICENSE.md).

@@ -19,6 +19,17 @@ This container image packages [Workbench](https://docs.posit.co/ide/server-pro/)
 > [!IMPORTANT]
 > Running this image in environments other than Azure ML compute instances is not supported or recommended. If you are looking for the standard Workbench image, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
 
+## Quick reference
+
+| | |
+|---|---|
+| **Maintained by** | [the Posit Docker team](https://github.com/posit-dev/images) |
+| **Where to get help** | [GitHub Issues](https://github.com/posit-dev/images-specialized/issues), [Images Discussion Board](https://github.com/posit-dev/images/discussions), [the Posit Community Forum](https://forum.posit.co/c/posit-professional-hosted), [Posit Support](https://support.posit.co/hc/en-us) |
+| **Where to file issues** | [https://github.com/posit-dev/images-specialized/issues](https://github.com/posit-dev/images-specialized/issues) |
+| **Source** | [https://github.com/posit-dev/images-specialized](https://github.com/posit-dev/images-specialized) |
+| **License** | [MIT](https://github.com/posit-dev/images-specialized/blob/main/LICENSE.md) |
+| **Product documentation** | [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/), [Workbench on Azure ML](https://posit.co/solutions/azure-ml) |
+
 ## Setup
 
 Follow the Microsoft documentation to attach this image to an Azure ML compute instance as a custom application:
@@ -53,6 +64,10 @@ Tags follow `{version}-{os}[-{variant}]`. For example:
 - `2026.01.2-418.pro1-ubuntu-24.04-std`: Standard variant (explicit)
 - `2026.01.2-418.pro1-ubuntu-24.04-min`: Minimal variant
 - `latest`: Most recent Standard build on the default OS
+
+## Architectures
+
+Posit publishes this image for `linux/amd64` only.
 
 ## Installed software
 

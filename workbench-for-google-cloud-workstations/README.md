@@ -16,6 +16,17 @@ This container image packages [Workbench](https://docs.posit.co/ide/server-pro/)
 ![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-shared%2Fworkbench-for-google-cloud-workstations&query=%24.downloadCount&label=ghcr.io%20pulls)
 ![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-google-cloud-workstations/size?color=%230e80c0&tag=latest&label=image+size&trim=)
 
+## Quick reference
+
+| | |
+|---|---|
+| **Maintained by** | [the Posit Docker team](https://github.com/posit-dev/images) |
+| **Where to get help** | [GitHub Issues](https://github.com/posit-dev/images-specialized/issues), [Images Discussion Board](https://github.com/posit-dev/images/discussions), [the Posit Community Forum](https://forum.posit.co/c/posit-professional-hosted), [Posit Support](https://support.posit.co/hc/en-us) |
+| **Where to file issues** | [https://github.com/posit-dev/images-specialized/issues](https://github.com/posit-dev/images-specialized/issues) |
+| **Source** | [https://github.com/posit-dev/images-specialized](https://github.com/posit-dev/images-specialized) |
+| **License** | [MIT](https://github.com/posit-dev/images-specialized/blob/main/LICENSE.md) |
+| **Product documentation** | [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/), [Workbench on Google Cloud](https://posit.co/solutions/google-cloud) |
+
 ## Setup
 
 Use the Google Cloud documentation to attach this image to a workstation configuration:
@@ -56,6 +67,10 @@ Tags follow `{version}-{os}[-{variant}]`. For example:
 - `latest`: Most recent Standard build on the default OS
 
 Browse the [Artifact Registry repository](https://us-docker.pkg.dev/posit-images/cloud-workstations/workbench) for the full tag list.
+
+## Architectures
+
+Posit publishes this image for `linux/amd64` only.
 
 ## Installed software
 
