@@ -12,7 +12,7 @@ This container image packages [Workbench](https://docs.posit.co/ide/server-pro/)
 
 [![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/workbench-for-microsoft-azure-ml)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
-[![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://hub.docker.com/r/posit/workbench/tags)
+[![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-microsoft-azure-ml)
 ![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-shared%2Fworkbench-for-microsoft-azure-ml&query=%24.downloadCount&label=ghcr.io%20pulls)
 ![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/size?color=%230e80c0&tag=latest&label=image+size&trim=)
 
@@ -56,16 +56,16 @@ Tags follow `{version}-{os}[-{variant}]`. For example:
 
 ## Installed software
 
-| Component  | Path                                                                    |
-|------------|-------------------------------------------------------------------------|
-| Workbench  | `/usr/lib/rstudio-server/`                                              |
-| R          | `/opt/R/{version}/bin/R`                                                |
-| Python     | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
-| JupyterLab | `/opt/python/jupyter/bin/jupyter`                                       |
-| Quarto     | `/usr/local/bin/quarto`                                                 |
-| TinyTeX    | Quarto installs at build time                                           |
-| Azure CLI  | `az` with the `ml` extension preinstalled                               |
-| Pro Drivers | RStudio Pro database drivers                                           |
+| Component   | Path                                                                    |
+|-------------|-------------------------------------------------------------------------|
+| Workbench   | `/usr/lib/rstudio-server/`                                              |
+| R           | `/opt/R/{version}/bin/R`                                                |
+| Python      | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
+| JupyterLab  | `/opt/python/jupyter/bin/jupyter`                                       |
+| Quarto      | `/usr/local/bin/quarto`                                                 |
+| TinyTeX     | `/opt/.TinyTeX`                                                         |
+| Azure CLI   | `az` with the `ml` extension preinstalled                               |
+| Pro Drivers | RStudio Pro database drivers                                            |
 
 ## Configuration
 
