@@ -3,8 +3,11 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Weekly rebuild, to pick up any upstream changes.
-    - cron: "15 3 * * 0" # At 03:15 on Sunday
+    # Weekly rebuild, to pick up any upstream changes. Runs last in the
+    # 04:00 specialized hour because the WAML build is much longer than
+    # WGCW (04:15) — putting it later in the hour absorbs the rest of
+    # the window before the daily builds start at 07:45.
+    - cron: "45 4 * * 0" # At 04:45 on Sunday
 
   push:
     branches:
