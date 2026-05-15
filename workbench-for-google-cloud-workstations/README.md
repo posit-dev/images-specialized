@@ -1,6 +1,31 @@
+<a href="https://posit.co/products/enterprise/workbench">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-reverse.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-fullcolor.svg">
+  <img alt="Posit Workbench Logo" src="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-fullcolor.svg">
+</picture>
+</a>
+
 # Posit Workbench for Google Cloud Workstations
 
 This container image packages [Workbench](https://docs.posit.co/ide/server-pro/) as a [Google Cloud Workstations](https://cloud.google.com/workstations) configuration image. It builds on the predefined Google workstation base image and adds Workbench, R, Python, Jupyter, and the workstation startup hooks needed to launch Workbench when a user starts their workstation.
+
+[![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/workbench-for-google-cloud-workstations)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/wgcw.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/wgcw.yml)
+[![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-google-cloud-workstations/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations)
+![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-specialized%2Fworkbench-for-google-cloud-workstations&query=%24.downloadCount&label=ghcr.io%20pulls)
+![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-google-cloud-workstations/size?color=%230e80c0&tag=latest&label=image+size&trim=)
+
+## Quick reference
+
+| | |
+|---|---|
+| **Maintained by** | [the Posit Docker team](https://github.com/posit-dev/images) |
+| **Where to get help** | [GitHub Issues](https://github.com/posit-dev/images-specialized/issues), [Images Discussion Board](https://github.com/posit-dev/images/discussions), [the Posit Community Forum](https://forum.posit.co/c/posit-professional-hosted), [Posit Support](https://support.posit.co/hc/en-us) |
+| **Where to file issues** | [https://github.com/posit-dev/images-specialized/issues](https://github.com/posit-dev/images-specialized/issues) |
+| **Source** | [https://github.com/posit-dev/images-specialized](https://github.com/posit-dev/images-specialized) |
+| **License** | [MIT](https://github.com/posit-dev/images-specialized/blob/main/LICENSE.md) |
+| **Product documentation** | [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/), [Workbench on Google Cloud](https://posit.co/solutions/google-cloud) |
 
 ## Setup
 
@@ -23,7 +48,7 @@ Posit publishes the image to Google Artifact Registry. Pull from the location cl
 
 You can browse the US Central repository from the web at [`https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench`](https://us-central1-docker.pkg.dev/posit-images/cloud-workstations/workbench) to view available tags.
 
-A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
+Posit also publishes a mirror at [`ghcr.io/posit-dev/workbench-for-google-cloud-workstations`](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-google-cloud-workstations).
 
 ## Image variants
 
@@ -34,7 +59,7 @@ A mirror is also available at [`ghcr.io/posit-dev/workbench-for-google-cloud-wor
 
 ## Image tags
 
-Tags follow `{version}-{os}[-{variant}]`. For example:
+Tags follow `{version}-{os}[-{variant}]`. The following are valid examples:
 
 - `2026.01.2-418.pro1-ubuntu-24.04`: Standard variant on Ubuntu 24.04
 - `2026.01.2-418.pro1-ubuntu-24.04-std`: Standard variant (explicit)
@@ -43,16 +68,21 @@ Tags follow `{version}-{os}[-{variant}]`. For example:
 
 Browse the [Artifact Registry repository](https://us-docker.pkg.dev/posit-images/cloud-workstations/workbench) for the full tag list.
 
+## Architectures
+
+Posit publishes this image for `linux/amd64` only.
+
 ## Installed software
 
-| Component  | Path                                                                     |
-|------------|--------------------------------------------------------------------------|
-| Workbench  | `/usr/lib/rstudio-server/`                                               |
-| R          | `/opt/R/{version}/bin/R`                                                 |
-| Python     | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
-| JupyterLab | `/opt/python/jupyter/bin/jupyter`                                        |
-| Quarto     | `/usr/local/bin/quarto`                                                  |
-| TinyTeX    | `/opt/.TinyTeX`                                                          |
+| Component   | Path                                                                     |
+|-------------|--------------------------------------------------------------------------|
+| Workbench   | `/usr/lib/rstudio-server/`                                               |
+| R           | `/opt/R/{version}/bin/R`                                                 |
+| Python      | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
+| JupyterLab  | `/opt/python/jupyter/bin/jupyter`                                        |
+| Quarto      | `/usr/local/bin/quarto`                                                  |
+| TinyTeX     | `/opt/.TinyTeX`                                                          |
+| Pro Drivers | RStudio Pro database drivers                                             |
 
 The workstation runtime manages user authentication, home-directory persistence, and the Workbench license. For details, see the Google documentation linked above.
 

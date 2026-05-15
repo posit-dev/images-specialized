@@ -1,9 +1,9 @@
-name: Production
+name: WGCW
 on:
   workflow_dispatch:
 
   schedule:
-    # Weekly rebuild of all images, to pick up any upstream changes.
+    # Weekly rebuild, to pick up any upstream changes.
     - cron: "15 3 * * 0" # At 03:15 on Sunday
 
   push:
@@ -62,8 +62,9 @@ jobs:
         env:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
+          IMAGE_NAME: "workbench-for-google-cloud-workstations"
         run: |
-          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" "$IMAGE_NAME" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
 
   build:
     name: "${{ matrix.img.image }}:${{ matrix.img.version }}"
@@ -87,9 +88,6 @@ jobs:
 
       - name: Setup goss
         uses: "posit-dev/images-shared/setup-goss@main"
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
@@ -121,7 +119,7 @@ jobs:
           IMAGE_VERSION: ${{ matrix.img.version }}
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
-          REGISTRY: ghcr.io/${{ github.repository_owner }}
+          CACHE_REGISTRY: "us-central1-docker.pkg.dev/cloud-workstations-cache"
         run: |
           bakery build --load --pull \
             --retry 1 \
@@ -129,7 +127,7 @@ jobs:
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS" \
-            --cache-registry "$REGISTRY"
+            --cache-registry "$CACHE_REGISTRY"
 
       - name: Test
         env:
@@ -162,18 +160,3 @@ jobs:
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS"
-
-  clean:
-    name: Clean
-    if: always() && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
-    needs:
-      - build
-
-    uses: "posit-dev/images-shared/.github/workflows/clean.yml@main"
-    with:
-      remove-dangling-caches: true
-      remove-caches-older-than: 14
-      clean-temporary-images: false

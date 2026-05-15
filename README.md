@@ -1,8 +1,11 @@
-# Posit Workbench Container Images for Specialized Environments
+# Posit Workbench container images for specialized environments
 
 Container images that package [Workbench](https://docs.posit.co/ide/server-pro) for specific managed cloud platforms. Each image arrives configured for the host platform's authentication, storage, and lifecycle conventions, so you can use it directly as the workstation or compute image.
 
 For the standard, non-platform-specific Workbench container images, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
+
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/wgcw.yml?branch=main&label=workbench-for-google-cloud-workstations+build)](https://github.com/posit-dev/images-specialized/actions/workflows/wgcw.yml)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main&label=workbench-for-microsoft-azure-ml+build)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
 
 ## Images
 
@@ -65,14 +68,14 @@ podman build \
 
 This repository follows the structure described in [bakery usage](https://github.com/posit-dev/images-shared/tree/main/posit-bakery#usage).
 
-Additional documentation:
+The following additional documentation is available:
 - [Configuration Reference](https://github.com/posit-dev/images-shared/blob/main/posit-bakery/CONFIGURATION.md): `bakery.yaml` schema and options
 - [Templating Reference](https://github.com/posit-dev/images-shared/blob/main/posit-bakery/TEMPLATING.md): Jinja2 macros for Containerfile templates
 - [CI Workflows](https://github.com/posit-dev/images-shared/blob/main/CI.md): shared GitHub Actions workflows for building and pushing images
 
 ### Prerequisites
 
-Build prerequisites:
+The following build prerequisites are required:
 
 * [python](https://docs.astral.sh/uv/guides/install-python/)
 * [uv](https://docs.astral.sh/uv/getting-started/installation/)
@@ -112,3 +115,11 @@ We invite you to join us on [GitHub Discussions](https://github.com/posit-dev/im
 ## Issues
 
 If you encounter any issues or have any questions, please [open an issue](https://github.com/posit-dev/images-specialized/issues). We appreciate your feedback.
+
+## Code of Conduct
+
+We expect all contributors to adhere to the project's [Code of Conduct](CODE_OF_CONDUCT.md) and create a positive and inclusive community.
+
+## License
+
+Posit licenses these container images and associated tooling under the [MIT License](LICENSE.md).

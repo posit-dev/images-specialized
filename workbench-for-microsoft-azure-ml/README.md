@@ -1,6 +1,34 @@
+<a href="https://posit.co/products/enterprise/workbench">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-reverse.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-fullcolor.svg">
+  <img alt="Posit Workbench Logo" src="https://cdn.posit.co/platform/containers/logos/logo_workbenchtag-fullcolor.svg">
+</picture>
+</a>
+
 # Posit Workbench for Microsoft Azure Machine Learning
 
 This container image packages [Workbench](https://docs.posit.co/ide/server-pro/) as a custom application image for [Azure Machine Learning compute instances](https://learn.microsoft.com/en-us/azure/machine-learning/concept-compute-instance). It includes Workbench, R, Python, Jupyter, the Azure CLI with the `ml` extension, and the user-provisioning glue Azure ML expects.
+
+[![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/workbench-for-microsoft-azure-ml)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
+[![Latest Version](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/latest_tag?color=%230e80c0&ignore=latest,*-*,std&label=version&trim=)](https://github.com/posit-dev/images-specialized/pkgs/container/workbench-for-microsoft-azure-ml)
+![GHCR Pulls](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2Fposit-dev%2Fimages-specialized%2Fworkbench-for-microsoft-azure-ml&query=%24.downloadCount&label=ghcr.io%20pulls)
+![GHCR Image Size](https://ghcr-badge.egpl.dev/posit-dev/workbench-for-microsoft-azure-ml/size?color=%230e80c0&tag=latest&label=image+size&trim=)
+
+> [!IMPORTANT]
+> Posit does not support or recommend running this image in environments other than Azure ML compute instances. If you are looking for the standard Workbench image, see [posit-dev/images-workbench](https://github.com/posit-dev/images-workbench).
+
+## Quick reference
+
+| | |
+|---|---|
+| **Maintained by** | [the Posit Docker team](https://github.com/posit-dev/images) |
+| **Where to get help** | [GitHub Issues](https://github.com/posit-dev/images-specialized/issues), [Images Discussion Board](https://github.com/posit-dev/images/discussions), [the Posit Community Forum](https://forum.posit.co/c/posit-professional-hosted), [Posit Support](https://support.posit.co/hc/en-us) |
+| **Where to file issues** | [https://github.com/posit-dev/images-specialized/issues](https://github.com/posit-dev/images-specialized/issues) |
+| **Source** | [https://github.com/posit-dev/images-specialized](https://github.com/posit-dev/images-specialized) |
+| **License** | [MIT](https://github.com/posit-dev/images-specialized/blob/main/LICENSE.md) |
+| **Product documentation** | [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/), [Workbench on Azure ML](https://posit.co/solutions/azure-ml) |
 
 ## Setup
 
@@ -30,25 +58,29 @@ Browse the [package page](https://github.com/posit-dev/images-specialized/pkgs/c
 
 ## Image tags
 
-Tags follow `{version}-{os}[-{variant}]`. For example:
+Tags follow `{version}-{os}[-{variant}]`. The following are valid examples:
 
 - `2026.01.2-418.pro1-ubuntu-24.04`: Standard variant on Ubuntu 24.04
 - `2026.01.2-418.pro1-ubuntu-24.04-std`: Standard variant (explicit)
 - `2026.01.2-418.pro1-ubuntu-24.04-min`: Minimal variant
 - `latest`: Most recent Standard build on the default OS
 
+## Architectures
+
+Posit publishes this image for `linux/amd64` only.
+
 ## Installed software
 
-| Component  | Path                                                                    |
-|------------|-------------------------------------------------------------------------|
-| Workbench  | `/usr/lib/rstudio-server/`                                              |
-| R          | `/opt/R/{version}/bin/R`                                                |
-| Python     | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
-| JupyterLab | `/opt/python/jupyter/bin/jupyter`                                       |
-| Quarto     | `/usr/local/bin/quarto`                                                 |
-| TinyTeX    | Quarto installs at build time                                           |
-| Azure CLI  | `az` with the `ml` extension preinstalled                               |
-| Pro Drivers | RStudio Pro database drivers                                           |
+| Component   | Path                                                                    |
+|-------------|-------------------------------------------------------------------------|
+| Workbench   | `/usr/lib/rstudio-server/`                                              |
+| R           | `/opt/R/{version}/bin/R`                                                |
+| Python      | `/opt/python/{version}/bin/python3` (symlinked at `/opt/python/default`) |
+| JupyterLab  | `/opt/python/jupyter/bin/jupyter`                                       |
+| Quarto      | `/usr/local/bin/quarto`                                                 |
+| TinyTeX     | `/opt/.TinyTeX`                                                         |
+| Azure CLI   | `az` with the `ml` extension preinstalled                               |
+| Pro Drivers | RStudio Pro database drivers                                            |
 
 ## Configuration
 

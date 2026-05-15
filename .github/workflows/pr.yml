@@ -49,6 +49,7 @@ jobs:
     with:
       dev-versions: "exclude"
       matrix-versions: "exclude"
+      cache: false  # Caching silently fails on these images as they are above the GHCR size limit.
 
   zizmor:
     name: Zizmor
