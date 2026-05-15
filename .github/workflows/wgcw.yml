@@ -3,8 +3,10 @@ on:
   workflow_dispatch:
 
   schedule:
-    # Weekly rebuild, to pick up any upstream changes.
-    - cron: "15 3 * * 0" # At 03:15 on Sunday
+    # Weekly rebuild, to pick up any upstream changes. Runs after
+    # Workbench production (03:15) and session (03:45) so it picks up
+    # those rebuilds, and ahead of WAML (04:45) which takes much longer.
+    - cron: "15 4 * * 0" # At 04:15 on Sunday
 
   push:
     branches:
