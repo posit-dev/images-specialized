@@ -89,7 +89,7 @@ file:
     owner: rstudio-server
     group: rstudio-server
   # Check for code-server executable (path varies based on RStudio Workbench version)
-  {{ $version_split := split "." "2026.04.0+526.pro2" }}
+  {{ $version_split := split "." "2026.05.0+218.pro1" }}
   {{ if or (ge ($version_split._0 | atoi) 2025) (and (ge ($version_split._0 | atoi) 2024) (ge ($version_split._1 | atoi) 7)) }}
   /usr/lib/rstudio-server/bin/pwb-code-server/bin/code-server:
     exists: true
@@ -120,7 +120,7 @@ file:
 
   # Check for Python installation
 
-  /opt/python/3.14.4/bin/python:
+  /opt/python/3.14.5/bin/python:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
 
   /opt/python/jupyter/bin/python:
@@ -178,7 +178,7 @@ command:
     exec: /usr/lib/rstudio-server/bin/rstudio-server version
     exit-status: 0
     stdout:
-      - "2026.04.0+526.pro2 Workbench"
+      - "2026.05.0+218.pro1 Workbench"
   "Verify Jupyter Notebook works":
     exec: "echo '{ \"cells\": [], \"metadata\": {}, \"nbformat\": 4, \"nbformat_minor\": 2}' | /opt/python/jupyter/bin/jupyter nbconvert --to notebook --stdin --stdout"
     timeout: 60000
@@ -191,18 +191,18 @@ command:
       - "R version 4.6.0"
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
 
-  "Verify Python installation is version 3.14.4":
-    exec: /opt/python/3.14.4/bin/python --version
+  "Verify Python installation is version 3.14.5":
+    exec: /opt/python/3.14.5/bin/python --version
     exit-status: 0
     stdout:
-      - "3.14.4"
+      - "3.14.5"
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
 
   "Verify Jupyter installation Python version":
     exec: /opt/python/jupyter/bin/python --version
     exit-status: 0
     stdout:
-      - "3.14.4"
+      - "3.14.5"
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   "Verify system OpenSSL":
     exec: which openssl
@@ -223,8 +223,8 @@ command:
   {{ $py_package_list_path := printf "%s/deps/py_packages.txt" .Env.IMAGE_VERSION_MOUNT }}
   {{ $py_package_list := readFile $py_package_list_path | splitList "\n" }}
   {{- range $py_package_list }}
-  Check Python 3.14.4 has {{.}} installed:
-    exec: /opt/python/3.14.4/bin/pip show {{.}}
+  Check Python 3.14.5 has {{.}} installed:
+    exec: /opt/python/3.14.5/bin/pip show {{.}}
     timeout: 60000
     exit-status: 0
     skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}

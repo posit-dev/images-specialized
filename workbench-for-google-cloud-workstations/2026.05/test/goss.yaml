@@ -10,7 +10,7 @@ package:
   rstudio-server:
     installed: true
     versions:
-    - 2026.04.0+526.pro2
+    - 2026.05.0+218.pro1
 
   r-4.6.0:
     installed: true
@@ -49,7 +49,7 @@ file:
     filetype: file
 
 
-  /opt/python/3.14.4/bin/python:
+  /opt/python/3.14.5/bin/python:
     exists: {{ if eq .Env.IMAGE_VARIANT "Standard" }}true{{ else }}false{{ end }}
 
   /opt/python/jupyter/bin/python:
@@ -171,11 +171,11 @@ command:
   Test rstudio-server.log creation:
     exec: touch /var/log/rstudio-server.log
     exit-status: 0
-  Check RStudio Workbench version is 2026.04.0+526.pro2:
+  Check RStudio Workbench version is 2026.05.0+218.pro1:
     exec: rstudio-server version
     exit-status: 0
     stdout: [
-       "2026.04.0+526.pro2",
+       "2026.05.0+218.pro1",
        "Workbench"
      ]
   Test Jupyter works:
@@ -183,20 +183,20 @@ command:
     timeout: 60000
     exit-status: 0
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  Check primary Python is version 3.14.4:
-    exec: /opt/python/3.14.4/bin/python --version
+  Check primary Python is version 3.14.5:
+    exec: /opt/python/3.14.5/bin/python --version
     timeout: 60000
     exit-status: 0
     stdout: [
-      "3.14.4"
+      "3.14.5"
     ]
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
-  Check Jupyter venv uses Python 3.14.4:
+  Check Jupyter venv uses Python 3.14.5:
     exec: /opt/python/jupyter/bin/python --version
     timeout: 60000
     exit-status: 0
     stdout: [
-        "3.14.4"
+        "3.14.5"
     ]
     skip: {{ if eq .Env.IMAGE_VARIANT "Minimal" }}true{{ else }}false{{ end }}
   Check for OpenSSL:
@@ -209,8 +209,8 @@ command:
   {{ $py_package_list_path := printf "%s/deps/python_requirements.txt" .Env.IMAGE_VERSION_MOUNT }}
   {{ $py_package_list := readFile $py_package_list_path | splitList "\n" }}
   {{- range $py_package_list }}
-  Check Python 3.14.4 has {{.}} installed:
-    exec: /opt/python/3.14.4/bin/pip show {{.}}
+  Check Python 3.14.5 has {{.}} installed:
+    exec: /opt/python/3.14.5/bin/pip show {{.}}
     timeout: 60000
     exit-status: 0
     skip: {{ if eq $image_variant "Minimal" }}true{{ else }}false{{ end }}
