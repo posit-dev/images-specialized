@@ -4,8 +4,8 @@ FROM ghcr.io/astral-sh/uv:debian-slim AS python-builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 ENV UV_PYTHON_PREFERENCE=only-managed
-RUN uv python install 3.14.4
-RUN mv /opt/python/cpython-3.14.4-linux-*/ /opt/python/3.14.4
+RUN uv python install 3.14.5
+RUN mv /opt/python/cpython-3.14.5-linux-*/ /opt/python/3.14.5
 
 
 FROM docker.io/library/ubuntu:24.04 AS build
@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04"
 
 ### ARG declarations ###
 ARG DEBIAN_FRONTEND=noninteractive
-ARG WORKBENCH_VERSION="2026.04.0+526.pro2"
+ARG WORKBENCH_VERSION="2026.05.0+218.pro1"
 ARG RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1
 
 ENV STARTUP_DEBUG_MODE=0
@@ -29,7 +29,7 @@ ENV DIAGNOSTIC_DIR=/var/log/rstudio
 ENV DIAGNOSTIC_ENABLE=false
 ENV DIAGNOSTIC_ONLY=false
 
-COPY --chmod=0644 workbench-for-microsoft-azure-ml/2026.04/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
+COPY --chmod=0644 workbench-for-microsoft-azure-ml/2026.05/conf/license-manager/TurboActivate.dat /opt/rstudio-license/license-manager.conf
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
@@ -54,12 +54,15 @@ RUN echo 'Acquire::Retries "3"; Acquire::http::Timeout "30"; Acquire::https::Tim
     rm -rf /var/lib/apt/lists/*
 
 ## Install Apt Packages ###
-COPY workbench-for-microsoft-azure-ml/2026.04/deps/apt_packages.txt /tmp/packages.txt
+COPY workbench-for-microsoft-azure-ml/2026.05/deps/apt_packages.txt /tmp/packages.txt
+COPY workbench-for-microsoft-azure-ml/2026.05/deps/optional_apt_packages.txt /tmp/optional_packages.txt
 RUN apt-get update -yqq && \
     xargs -a /tmp/packages.txt apt-get install -yqq --no-install-recommends && \
+    xargs -a /tmp/optional_packages.txt apt-get install -yqq --no-install-recommends && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/* && \
-    rm -f /tmp/packages.txt
+    rm -f /tmp/packages.txt /tmp/optional_packages.txt
+
 
 ### Install wait-for-it ###
 COPY --chmod=0755 workbench-for-microsoft-azure-ml/scripts/wait-for-it.sh /usr/local/bin/wait-for-it.sh
@@ -67,8 +70,8 @@ COPY --chmod=0755 workbench-for-microsoft-azure-ml/scripts/wait-for-it.sh /usr/l
 RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash \
     && az extension add -n ml -y
 
-### Install Workbench 2026.04.0+526.pro2 ###
-COPY --chmod=0755 workbench-for-microsoft-azure-ml/2026.04/scripts/install_workbench.sh /tmp/install_workbench.sh
+### Install Workbench 2026.05.0+218.pro1 ###
+COPY --chmod=0755 workbench-for-microsoft-azure-ml/2026.05/scripts/install_workbench.sh /tmp/install_workbench.sh
 
 RUN \
     /tmp/install_workbench.sh && \
@@ -86,16 +89,66 @@ RUN \
 ### Install Quarto to PATH ###
 RUN ln -s /lib/rstudio-server/bin/quarto/bin/quarto /usr/local/bin/quarto
 
+### Install Pro Drivers ###
+RUN apt-get update -yqq && \
+        apt-get install -yqq --no-install-recommends \
+            rstudio-drivers && \
+        apt-get clean -yqq && \
+        rm -rf /var/lib/apt/lists/*
 
+### Install Python from previous stage ###
+COPY --from=python-builder /opt/python /opt/python
+
+### Install R ###
+RUN RUN_UNATTENDED=1 R_VERSION=4.6.0 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
+    find . -type f -name '[rR]-4.6.0.*\.(deb|rpm)' -delete
+
+### Install Jupyter ###
+RUN /opt/python/3.14.5/bin/python -m venv /opt/python/jupyter && \
+    /opt/python/jupyter/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    /opt/python/jupyter/bin/pip install --no-cache-dir --upgrade \
+        "jupyterlab<5" \
+        notebook \
+        "pwb_jupyterlab<2" && \
+    rm -rf /opt/python/jupyter/lib/python*/site-packages/jupyterlab/tests && \
+    rm -rf /opt/python/jupyter/lib/python*/site-packages/jupyterlab/galata && \
+    rm -f /opt/python/jupyter/lib/python*/site-packages/jupyterlab/staging/yarn.lock && \
+    ln -s /opt/python/jupyter/bin/jupyter /usr/local/bin/jupyter
+
+### Install Jupyter kernels ###
+RUN /opt/python/3.14.5/bin/pip install --no-cache-dir --upgrade --break-system-packages \
+    ipykernel && \
+    /opt/python/3.14.5/bin/python -m ipykernel install --user --name python3.14.5 --display-name "Python 3.14.5"
+
+### Install Python Packages ###
+COPY workbench-for-microsoft-azure-ml/2026.05/deps/py_packages.txt /tmp/py_packages.txt
+RUN /opt/python/3.14.5/bin/pip install --no-cache-dir --upgrade --break-system-packages \
+        -r /tmp/py_packages.txt && \
+    rm -f /tmp/py_packages.txt && \
+    rm -f /tmp/py_packages.txt && \
+ln -s /opt/python/3.14.5 /opt/python/default
+
+### Install R Packages ###
+COPY workbench-for-microsoft-azure-ml/2026.05/deps/r_packages.txt /tmp/r_packages.txt
+RUN /opt/R/4.6.0/bin/R --vanilla -e 'install.packages(readLines("/tmp/r_packages.txt"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)' && \
+    rm -f /tmp/r_packages.txt && \
+    rm -f /tmp/r_packages.txt
 
 ### Copy startup scripts and configuration files ###
-COPY --chmod=0755 "workbench-for-microsoft-azure-ml/2026.04/conf/license-manager/license-manager-shim" /opt/rstudio-license/license-manager
-COPY --chmod=0775 "workbench-for-microsoft-azure-ml/2026.04/scripts/startup.sh" /usr/local/bin/startup.sh
-COPY "workbench-for-microsoft-azure-ml/2026.04/conf/supervisor/supervisord.conf" /etc/supervisor/supervisord.conf
-COPY "workbench-for-microsoft-azure-ml/2026.04/conf/supervisor/startup" /startup/base
-COPY "workbench-for-microsoft-azure-ml/2026.04/conf/supervisor/startup-launcher" /startup/launcher
-COPY "workbench-for-microsoft-azure-ml/2026.04/conf/jupyter/*" "workbench-for-microsoft-azure-ml/2026.04/conf/launcher/*" "workbench-for-microsoft-azure-ml/2026.04/conf/rstudio/*" "workbench-for-microsoft-azure-ml/2026.04/conf/positron/*" "workbench-for-microsoft-azure-ml/2026.04/conf/vscode/*" /etc/rstudio/
-COPY "workbench-for-microsoft-azure-ml/2026.04/web/landing/*" /usr/lib/rstudio-server/www/
+COPY --chmod=0755 "workbench-for-microsoft-azure-ml/2026.05/conf/license-manager/license-manager-shim" /opt/rstudio-license/license-manager
+COPY --chmod=0775 "workbench-for-microsoft-azure-ml/2026.05/scripts/startup.sh" /usr/local/bin/startup.sh
+COPY "workbench-for-microsoft-azure-ml/2026.05/conf/supervisor/supervisord.conf" /etc/supervisor/supervisord.conf
+COPY "workbench-for-microsoft-azure-ml/2026.05/conf/supervisor/startup" /startup/base
+COPY "workbench-for-microsoft-azure-ml/2026.05/conf/supervisor/startup-launcher" /startup/launcher
+COPY "workbench-for-microsoft-azure-ml/2026.05/conf/jupyter/*" "workbench-for-microsoft-azure-ml/2026.05/conf/launcher/*" "workbench-for-microsoft-azure-ml/2026.05/conf/rstudio/*" "workbench-for-microsoft-azure-ml/2026.05/conf/positron/*" "workbench-for-microsoft-azure-ml/2026.05/conf/vscode/*" /etc/rstudio/
+COPY "workbench-for-microsoft-azure-ml/2026.05/web/landing/*" /usr/lib/rstudio-server/www/
+
+### Install TinyTeX using Quarto ###
+# Caches won't invalidate correctly on new releases for TinyTeX installs. This ADD instruction is a workaround to bust
+# the cache on new releases.
+ADD https://github.com/rstudio/tinytex-releases/releases/latest /tmp/tinytex-release.json
+RUN GH_TOKEN="$([ -s /run/secrets/github_token ] && cat /run/secrets/github_token)" HOME="/opt" /lib/rstudio-server/bin/quarto/bin/quarto install tinytex --no-prompt --update-path \
+    && rm -f /tmp/tinytex-release.json
 
 EXPOSE 8787/tcp
 EXPOSE 5559/tcp
