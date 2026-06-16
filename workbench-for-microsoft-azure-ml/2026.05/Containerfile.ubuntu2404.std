@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04"
 
 ### ARG declarations ###
 ARG DEBIAN_FRONTEND=noninteractive
-ARG WORKBENCH_VERSION="2026.05.0+218.pro1"
+ARG WORKBENCH_VERSION="2026.05.1+225.pro10"
 ARG RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1
 
 ENV STARTUP_DEBUG_MODE=0
@@ -70,7 +70,7 @@ COPY --chmod=0755 workbench-for-microsoft-azure-ml/scripts/wait-for-it.sh /usr/l
 RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash \
     && az extension add -n ml -y
 
-### Install Workbench 2026.05.0+218.pro1 ###
+### Install Workbench 2026.05.1+225.pro10 ###
 COPY --chmod=0755 workbench-for-microsoft-azure-ml/2026.05/scripts/install_workbench.sh /tmp/install_workbench.sh
 
 RUN \
