@@ -5,7 +5,9 @@ updates:
       - "/"
       - "/.github/actions/*"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
