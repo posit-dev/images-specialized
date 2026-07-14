@@ -61,8 +61,8 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.06.0+242.pro13
-        subpath: '2026.06'
+      - name: 2026.07.0+139.pro9
+        subpath: '2026.07'
         latest: true
         os:
           - name: Ubuntu 24.04
@@ -96,8 +96,8 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.06.0+242.pro13
-        subpath: '2026.06'
+      - name: 2026.07.0+139.pro9
+        subpath: '2026.07'
         latest: true
         os:
           - name: Ubuntu 24.04
