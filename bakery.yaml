@@ -61,7 +61,7 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.07.0+139.pro9
+      - name: 2026.07.1+147.pro6
         subpath: '2026.07'
         latest: true
         os:
@@ -96,7 +96,7 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.07.0+139.pro9
+      - name: 2026.07.1+147.pro6
         subpath: '2026.07'
         latest: true
         os:
