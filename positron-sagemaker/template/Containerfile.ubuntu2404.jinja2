@@ -1,3 +1,4 @@
+{%- import "quarto.j2" as quarto -%}
 # syntax=docker/dockerfile:1
 #
 # Positron on Amazon SageMaker — a custom JupyterLab image that runs Posit's
@@ -34,10 +35,6 @@ ARG POSITRON_VERSION={{ Image.Version }}
 # Default Bedrock model for the Posit Assistant (a US Claude cross-region
 # inference profile). Overridable at build time with --build-arg.
 ARG POSITRON_BEDROCK_MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
-
-# Quarto version to download from GitHub releases. Override with
-# --build-arg QUARTO_VERSION=... to track a different release.
-ARG QUARTO_VERSION=1.9.38
 
 # Posit Professional Drivers version to download from the Posit CDN. The bundle
 # is a single .deb containing all drivers (Athena, Snowflake, Redshift, ...).
@@ -118,16 +115,16 @@ RUN apt-get update -qq \
     && R -e 'install.packages(c("IRkernel","tidyverse","data.table","shiny","odbc","DBI"), lib = .Library)'
 
 # --- Quarto ----------------------------------------------------------------
-# Download the prebuilt linux-amd64 tarball from GitHub releases and extract
-# with --strip-components=1 so the binary lands at /opt/quarto/bin/quarto
-# alongside its share/ dir (the layout `quarto` resolves resources from), then
-# symlink it onto PATH.
-RUN mkdir -p /opt/quarto \
-    && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz" \
-        -o /tmp/quarto.tar.gz \
-    && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \
-    && rm /tmp/quarto.tar.gz \
-    && ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto
+# Installed via the Posit Open apt repository (quarto.j2), not the GitHub CDN
+# tarball the prototype used. The macro registers the "open" repo itself
+# (apt.setup_posit_repo("open", ...)) and installs the pinned deb package,
+# which lands at /opt/quarto (no version-scoped subdirectory) and symlinks
+# `quarto` onto /usr/local/bin via its own postinst script — no manual
+# symlink needed here, unlike the tarball install it replaces. Verified
+# against the pinned base image: registering the repo and installing the
+# package does not disturb conda, and quarto=1.9.38 is available from the
+# repo verbatim (same version the tarball install pinned).
+{{ quarto.run_install(Dependencies.quarto) }}
 
 # --- Posit Professional Drivers (ODBC) -------------------------------------
 # The Pro Drivers ship as one .deb bundle (all drivers) on the Posit CDN
