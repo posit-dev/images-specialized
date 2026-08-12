@@ -116,6 +116,9 @@ images:
       - dependency: quarto
         constraint:
           latest: true
+      - dependency: R
+        constraint:
+          latest: true
     versions:
       - name: 2026.07.1-5
         subpath: '2026.07'
@@ -128,3 +131,5 @@ images:
         dependencies:
           - dependency: quarto
             version: 1.9.38
+          - dependency: R
+            version: 4.6.1
