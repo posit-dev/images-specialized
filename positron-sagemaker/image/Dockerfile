@@ -1,0 +1,293 @@
+# syntax=docker/dockerfile:1
+#
+# Positron on Amazon SageMaker — a custom JupyterLab image that runs Posit's
+# Positron IDE inside SageMaker Studio, on the sagemaker-distribution base.
+# Adds Positron Server, R + Python runtimes (with Shiny + uv), and a
+# Bedrock-backed Posit Assistant. Licensing is applied at runtime from AWS
+# Secrets Manager (no license baked into the image). See README.md.
+#
+# Positron Server is downloaded from the Posit CDN at build time, so no local
+# tarball is required:
+#   docker build --platform linux/amd64 -t positron-sagemaker .
+FROM public.ecr.aws/sagemaker/sagemaker-distribution:latest-cpu
+
+# Positron Server version to download from the Posit CDN. Override with
+# --build-arg POSITRON_VERSION=... to track a different release.
+# NOTE: 2026.07.0+ hardened licensing — it requires a signed license TOKEN
+# (a raw .lic no longer works and it fails closed). jupyter_server_config.py mints
+# that token at runtime from a signing key; see the licensing block there.
+# CRITICAL: the license public key is BAKED INTO the positron-server binary and was
+# ROTATED at 2026.07.1 (2026.07.0's key differs). The signing key stored in Secrets
+# Manager must pair with the public key of the EXACT build shipped here — this
+# version pins the build whose OrchestratorPublicKey matches our signing key.
+ARG POSITRON_VERSION=2026.07.1-5
+
+# Default Bedrock model for the Posit Assistant (a US Claude cross-region
+# inference profile). Overridable at build time with --build-arg.
+ARG POSITRON_BEDROCK_MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
+
+# Quarto version to download from GitHub releases. Override with
+# --build-arg QUARTO_VERSION=... to track a different release.
+ARG QUARTO_VERSION=1.9.38
+
+# Posit Professional Drivers version to download from the Posit CDN. The bundle
+# is a single .deb containing all drivers (Athena, Snowflake, Redshift, ...).
+# Override with --build-arg PRODRIVERS_VERSION=... to track a different release.
+ARG PRODRIVERS_VERSION=2026.04.0
+
+# AWS Toolkit VS Code extension version to download from the Open VSX registry
+# (Positron's extension gallery). Override with --build-arg AWS_TOOLKIT_VERSION=...
+ARG AWS_TOOLKIT_VERSION=4.6.1
+
+USER root
+
+# --- Positron Server -------------------------------------------------------
+# Download from the Posit CDN and extract with --strip-components=1 so the
+# binary lands at /opt/positron-server/bin/positron-server (the layout
+# jupyter-positron-server probes via which_positron_server()).
+RUN mkdir -p /opt/positron-server \
+    && curl -fsSL "https://cdn.posit.co/positron/releases/server/x86_64/positron-server-linux-x64-${POSITRON_VERSION}.tar.gz" \
+        -o /tmp/positron.tar.gz \
+    && tar -xzf /tmp/positron.tar.gz -C /opt/positron-server --strip-components=1 \
+    && rm /tmp/positron.tar.gz \
+    && ln -s /opt/positron-server/bin/positron-server /usr/local/bin/positron-server \
+    # jupyter_server_config.py writes the fetched license.lic into this activation
+    # dir at startup (next to the bundled license-manager binary, which validates
+    # it), so it must be writable by the runtime user (uid 1000).
+    && chown -R 1000:100 /opt/positron-server/resources/activation
+
+# --- AWS Toolkit (built-in VS Code extension) ------------------------------
+# Ship the AWS Toolkit as a positron-server BUILT-IN extension so it loads for
+# every user with no runtime config and without touching the user's own
+# ~/.positron-server/extensions (which lives on the masked, persistent home).
+# Built-in extensions are auto-discovered folders in the server's extensions/
+# dir (where positron-python/positron-r already live). A VSIX is a zip whose
+# payload is under extension/; we unpack just that subtree. The final ls -d
+# assertion fails the build loudly if a future Positron release changes the
+# built-in extensions layout (rather than silently dropping the extension).
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${AWS_TOOLKIT_VERSION}/file/amazonwebservices.aws-toolkit-vscode-${AWS_TOOLKIT_VERSION}.vsix" \
+        -o /tmp/aws-toolkit.vsix \
+    && rm -rf /tmp/aws-toolkit \
+    && unzip -q /tmp/aws-toolkit.vsix "extension/*" -d /tmp/aws-toolkit \
+    && mkdir -p /opt/positron-server/extensions \
+    && mv /tmp/aws-toolkit/extension /opt/positron-server/extensions/amazonwebservices.aws-toolkit-vscode \
+    && rm -rf /tmp/aws-toolkit /tmp/aws-toolkit.vsix \
+    && ls -d /opt/positron-server/extensions/amazonwebservices.aws-toolkit-vscode/package.json
+
+# --- R via rig + Posit Package Manager (binary CRAN) ------------------------
+# rig installs R; P3M serves precompiled Linux binaries so install.packages
+# does not compile from source. The codename is detected from the base image.
+# System libs for P3M binary packages: P3M ships prebuilt .so files linked against
+# SYSTEM libraries, and a missing one is invisible at build time — it only fails at
+# RUNTIME with "unable to load shared object", often deep inside an app. Two are
+# required and NOT in the base image: libuv1t64 for `fs` (libuv.so.1) and
+# libwebpmux3 for `ragg` (libwebpmux.so.3). Note the `t64` suffix — Ubuntu 24.04
+# (noble) renamed libuv1 in the 64-bit time_t transition. `libuv.so.1` DOES exist in
+# /opt/conda/lib, but R lives outside conda at /opt/R and must not have conda's lib
+# dir put on its linker path (ABI conflicts); install the real system package instead.
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends libzmq3-dev libuv1t64 libwebpmux3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://github.com/r-lib/rig/releases/download/latest/rig-linux-x86_64-latest.tar.gz \
+        -o /tmp/rig.tar.gz \
+    && tar -xzf /tmp/rig.tar.gz -C /usr/local \
+    && rm /tmp/rig.tar.gz \
+    && rig add release \
+    && CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")" \
+    && R_HOME_DIR="$(R RHOME)" \
+    && printf '%s\n' \
+        "options(repos = c(P3M = \"https://packagemanager.posit.co/cran/__linux__/${CODENAME}/latest\"))" \
+        "options(HTTPUserAgent = sprintf(\"R/%s R (%s)\", getRversion(), paste(getRversion(), R.version[\"platform\"], R.version[\"arch\"], R.version[\"os\"])))" \
+        > "${R_HOME_DIR}/etc/Rprofile.site" \
+    # No IRkernel::installspec: Positron uses its own R runtime (ark), not the
+    # Jupyter R kernel, and we strip all kernelspecs below for a Positron-only
+    # launcher. The IRkernel package stays installed (harmless) but registers no
+    # launcher tile.
+    && R -e 'install.packages(c("IRkernel","tidyverse","data.table","shiny","odbc","DBI"), lib = .Library)'
+
+# --- Quarto ----------------------------------------------------------------
+# Download the prebuilt linux-amd64 tarball from GitHub releases and extract
+# with --strip-components=1 so the binary lands at /opt/quarto/bin/quarto
+# alongside its share/ dir (the layout `quarto` resolves resources from), then
+# symlink it onto PATH.
+RUN mkdir -p /opt/quarto \
+    && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz" \
+        -o /tmp/quarto.tar.gz \
+    && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \
+    && rm /tmp/quarto.tar.gz \
+    && ln -s /opt/quarto/bin/quarto /usr/local/bin/quarto
+
+# --- Posit Professional Drivers (ODBC) -------------------------------------
+# The Pro Drivers ship as one .deb bundle (all drivers) on the Posit CDN
+# (7C152C12 is Posit's fixed Pro Drivers CDN distribution id, not version-
+# specific). They use the SYSTEM unixODBC driver manager (they do not bundle
+# one), so install unixodbc/unixodbc-dev first; an absolute (or `./`-prefixed)
+# path tells apt to install a local .deb file rather than a named package, which
+# also pulls the bundle's remaining deps (libaio, libsasl2). The bundle installs under
+# /opt/rstudio-drivers/ and ships an odbcinst.ini.sample with absolute paths
+# already resolved — append it to /etc/odbcinst.ini to register every driver
+# (the Athena .so is /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so).
+# Licensing is contractual only: the drivers do no runtime license check, and
+# shipping Positron (a licensed Posit product) covers the entitlement — so unlike
+# the Positron runtime license, there is nothing to fetch here.
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends unixodbc unixodbc-dev \
+    && curl -fsSL "https://cdn.posit.co/drivers/7C152C12/installer/rstudio-drivers_${PRODRIVERS_VERSION}_amd64.deb" \
+        -o /tmp/rstudio-drivers.deb \
+    && apt-get install -y --no-install-recommends /tmp/rstudio-drivers.deb \
+    && cat /opt/rstudio-drivers/odbcinst.ini.sample >> /etc/odbcinst.ini \
+    && rm -f /tmp/rstudio-drivers.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+# unixODBC may be present from both the system (apt) and the conda env; force
+# both R `odbc` and Python `pyodbc` to read the registration we wrote to
+# /etc/odbcinst.ini. Without this, a conda-shipped driver manager can look in
+# $CONDA_PREFIX/etc and never see the bundled drivers.
+ENV ODBCSYSINI=/etc
+
+# --- Verify R packages' system libraries -----------------------------------
+# P3M ships R packages as PREBUILT .so files linked against SYSTEM libraries. A
+# missing one is invisible at build time and only fails at RUNTIME with
+# "unable to load shared object" — often deep inside an app, far from the cause
+# (e.g. bslib::bs_theme_dependencies pulls in `fs`, so a themed Shiny app died on
+# libuv.so.1 while nothing referenced `fs` directly). This asserts every installed
+# package's .so resolves, so such a gap fails the BUILD instead.
+#
+# MUST run here, AFTER the Pro Drivers block, not inside the R block: the `odbc`
+# package needs libodbc.so.2, which unixodbc provides and which is installed with
+# the drivers further down. Asserting inside the R block false-fails on it.
+# libR.so is also excluded — ldd cannot resolve it outside a running R session.
+#
+# The libR exclusion is done in awk, NOT `| grep -v '^libR'`, on purpose. The base
+# image's build shell is `set -ef -o pipefail` (see /usr/local/bin/_dockerfile_shell.sh),
+# and grep exits 1 when it selects no lines — which is exactly the healthy case here
+# (nothing missing). Under pipefail that failed the build precisely when the check
+# should have passed. awk exits 0 whether or not it prints, so it is pipefail-safe.
+RUN missing="$(find "$(R RHOME)/library" -name '*.so' -exec ldd {} \; 2>/dev/null \
+        | awk '/not found/ && $1 !~ /^libR/ {print $1}' | sort -u | tr '\n' ' ')" \
+    && if [ -n "$missing" ]; then \
+         echo "ERROR: R packages have unresolved system libs: $missing" >&2; \
+         echo "Add the providing apt package(s) to a RUN block above." >&2; \
+         exit 1; \
+       fi \
+    && echo "OK: all R package shared libraries resolve"
+
+# --- jupyter-server-proxy stack + Python tooling ---------------------------
+# Install into the base's active conda env so the running jupyter-server loads
+# the extension. jupyter-server-proxy auto-enables via its entry point.
+# jupyter-positron-server >= 0.0.5 is required for the 2026.07 signed-token
+# licensing era. `cryptography` backs the in-process license-token minting in
+# jupyter_server_config.py (it RSA-signs a per-launch token; see the licensing
+# block there) — it is usually already in the base, but we pin it explicitly so
+# minting never breaks. uv is installed into /opt/conda/bin (on PATH, and NOT under
+# the home dir that SageMaker mounts a volume over) so Positron's uv integration
+# works at runtime.
+RUN pip install --no-cache-dir \
+        jupyter-server-proxy 'jupyter-positron-server>=0.0.5' \
+        cryptography \
+        shiny ipykernel matplotlib pyodbc \
+        uv
+
+# --- Remove Jupyter kernelspecs (Positron-only launcher) -------------------
+# Positron runs its own Python/R runtimes (positron-python / ark) and does not
+# use Jupyter kernelspecs. Delete the kernels/ dir in EVERY Jupyter data path so
+# the launcher's "Notebook" and "Console" sections collapse to just the Positron
+# tile (Glue, SparkMagic, python3 specs all live under these dirs). We remove by
+# directory rather than `jupyter kernelspec remove <name>` because the base ships
+# the same name across multiple data paths and remove-by-name only clears the
+# top copy. The synthetic "python3" kernel that ipykernel always exposes survives
+# directory removal — that is suppressed at runtime via
+# KernelSpecManager.ensure_native_kernel=False (see jupyter_server_config.py), so
+# the assert below passes that same flag to reflect runtime reality and still
+# fails the build loudly if a real kernelspec dir survives a future base change.
+RUN for d in $(jupyter --paths --json \
+        | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)['data']))"); do \
+        rm -rf "$d/kernels"; \
+    done \
+    && test -z "$(jupyter kernelspec list --json --KernelSpecManager.ensure_native_kernel=False \
+        | python -c "import json,sys; print(' '.join(json.load(sys.stdin)['kernelspecs']))")"
+
+# --- Positron proxy config -------------------------------------------------
+# Registers Positron with jupyter-server-proxy and corrects positron-server's
+# proxy behavior (X-Forwarded-Prefix stripping, /positron/positron collapse,
+# launcher tile). Placed in /usr/local/etc/jupyter, which is on jupyter's config
+# search path, so it loads ADDITIVELY alongside the base image's own
+# /etc/jupyter/jupyter_server_config.py rather than replacing it.
+COPY jupyter_server_config.py /usr/local/etc/jupyter/jupyter_server_config.py
+
+# The config patches jupyterlab_server's LabHandler so a DEEP-LINKED JupyterLab
+# page (/lab, /lab/tree/...) also redirects into Positron — SageMaker Unified
+# Studio deep-links /lab/tree/<mount>, which LabApp.default_url cannot catch.
+# That patch rests on two jupyterlab_server internals; assert them here so a base
+# image bump fails the build loudly instead of silently un-doing the redirect:
+#   1. LabHandler.get is SYNC (the wrapper returns its result directly), and
+#   2. LabHandler's route covers /lab and /lab/tree/... but NOT /lab/api/...,
+#      which is what keeps JupyterLab's own APIs out of the redirect.
+# (fullmatch, because tornado anchors handler patterns at the end.)
+RUN python -c "\
+import inspect, re; \
+from jupyterlab_server.handlers import LabHandler, MASTER_URL_PATTERN; \
+assert not inspect.iscoroutinefunction(LabHandler.get), 'LabHandler.get became async'; \
+p = re.compile(MASTER_URL_PATTERN.format('lab')); \
+assert p.fullmatch('/lab') and p.fullmatch('/lab/tree/shared'), 'LabHandler no longer serves the lab page'; \
+assert not p.fullmatch('/lab/api/workspaces'), 'LabHandler now swallows /lab/api'"
+
+# Suppress the duplicate launcher tile from jupyter-positron-server's entry
+# point (our config registers the working "positron" route + tile).
+ENV JSP_POSITRON_LAUNCHER_DISABLED=1
+
+# --- Posit Assistant: Amazon Bedrock (enforced settings) --------------------
+# Credentials come from the SageMaker execution role (AWS SDK default chain);
+# region comes from AWS_REGION/AWS_DEFAULT_REGION set by SageMaker. The role
+# needs bedrock:InvokeModel and the model must be enabled in Bedrock model
+# access (documented prerequisites in README.md).
+# NOTE: POSITRON_ENFORCED_SETTINGS must be INLINE JSON (not a file path) —
+# AdminPolicyService calls JSON.parse() directly on the env var value.
+# We bake the JSON into the image and pass it via jupyter_server_config.py.
+#
+# remote.autoForwardPorts=false quiets the Ports panel. Positron's runtimes are
+# Jupyter-protocol kernels: positron-supervisor listens on a port and EACH kernel
+# (ark for R, ipykernel for Python) opens FIVE ZeroMQ sockets
+# (shell/iopub/stdin/control/hb), so VS Code's auto-forward lists ~10+ localhost
+# ports as "Auto Forwarded". They were never externally reachable (only via the
+# authenticated Studio proxy), but the noise reads as an exposed surface to
+# security reviewers.
+#
+# MEASURED, DO NOT "FIX" BACK TO autoForwardPortsSource=output: that value was
+# tried first and made it WORSE (9 -> 23 ports). It does take effect — the
+# tell is that the Ports panel's "Running Process" column goes EMPTY, because
+# output mode scrapes port numbers from text and so has no process to attribute
+# — but Positron's kernel/supervisor startup prints its port numbers to output,
+# so output-scraping finds MORE ports than process-scanning did. Only disabling
+# auto-forward outright actually quiets it.
+#
+# Safe for app preview: positron-run-app does NOT use VS Code port forwarding —
+# it parses the URL from output (src/appUrlDetector.ts) and serves it through
+# Positron's OWN proxy (src/api.ts getProxyUri / shouldUsePositronProxy), a
+# separate mechanism this setting doesn't touch. Users who start a server by hand
+# can still forward it with "Add Port" in the Ports panel.
+#
+# Delivery is verified working: server-main.js logs
+# "[AdminPolicyService] Added policy: <key> = <value>" for each key, and
+# AdminPolicyService.read() accepts ANY key (no policy-registration filter), so
+# arbitrary settings can be enforced this way. Grep the app log for
+# "AdminPolicyService" to confirm what actually reached Positron.
+COPY enforced-settings.json /etc/positron/enforced-settings.json
+RUN sed -i "s|__POSITRON_BEDROCK_MODEL__|${POSITRON_BEDROCK_MODEL}|" /etc/positron/enforced-settings.json
+
+# Baked default AWS profile (credential_process -> execution role). Copied to a
+# path outside the masked home; jupyter_server_config.py points AWS_CONFIG_FILE
+# here at startup only when the user has no ~/.aws/config of their own.
+COPY aws-config /etc/positron/aws-config
+
+USER $MAMBA_USER
+
+# SageMaker runs the image's CMD to launch the JupyterLab app. The base's
+# default CMD is /bin/bash, which exits immediately (exit 0) and makes the app
+# fail to start. entrypoint-jupyter-server (from the base) reads
+# SAGEMAKER_APP_TYPE and serves JupyterLab under /<app-type>/default with
+# supervisor — the long-running process SageMaker expects.
+CMD ["entrypoint-jupyter-server"]
