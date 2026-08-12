@@ -82,9 +82,14 @@ RUN apt-get update -qq \
     && rm -rf /tmp/aws-toolkit /tmp/aws-toolkit.vsix \
     && ls -d /opt/positron-server/extensions/amazonwebservices.aws-toolkit-vscode/package.json
 
-# --- R via rig + Posit Package Manager (binary CRAN) ------------------------
-# rig installs R; P3M serves precompiled Linux binaries so install.packages
-# does not compile from source. The codename is detected from the base image.
+# --- R via r.j2 (rstd.io/r-install) + Posit Package Manager (binary CRAN) --
+# r.j2 does not use rig at all — its install() macro runs the same
+# rstd.io/r-install script directly, landing R at /opt/R/{version} (verified
+# empirically against the pinned base image; rig happened to match that same
+# path convention, but is otherwise unrelated). R is now pinned via
+# bakery.yaml's R dependencyConstraint rather than floating to whatever
+# `rig add release` resolved to at build time.
+#
 # System libs for P3M binary packages: P3M ships prebuilt .so files linked against
 # SYSTEM libraries, and a missing one is invisible at build time — it only fails at
 # RUNTIME with "unable to load shared object", often deep inside an app. Two are
@@ -96,22 +101,34 @@ RUN apt-get update -qq \
 RUN apt-get update -qq \
     && apt-get install -y --no-install-recommends libzmq3-dev libuv1t64 libwebpmux3 \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://github.com/r-lib/rig/releases/download/latest/rig-linux-x86_64-latest.tar.gz \
-        -o /tmp/rig.tar.gz \
-    && tar -xzf /tmp/rig.tar.gz -C /usr/local \
-    && rm /tmp/rig.tar.gz \
-    && rig add release \
-    && CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")" \
-    && R_HOME_DIR="$(R RHOME)" \
-    && printf '%s\n' \
-        "options(repos = c(P3M = \"https://packagemanager.posit.co/cran/__linux__/${CODENAME}/latest\"))" \
-        "options(HTTPUserAgent = sprintf(\"R/%s R (%s)\", getRversion(), paste(getRversion(), R.version[\"platform\"], R.version[\"arch\"], R.version[\"os\"])))" \
-        > "${R_HOME_DIR}/etc/Rprofile.site" \
-    # No IRkernel::installspec: Positron uses its own R runtime (ark), not the
-    # Jupyter R kernel, and we strip all kernelspecs below for a Positron-only
-    # launcher. The IRkernel package stays installed (harmless) but registers no
-    # launcher tile.
-    && R -e 'install.packages(c("IRkernel","tidyverse","data.table","shiny","odbc","DBI"), lib = .Library)'
+    && RUN_UNATTENDED=1 R_VERSION=4.6.1 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
+    find . -type f -name '[rR]-4.6.1.*\.(deb|rpm)' -delete
+
+# Unlike rig, r-install does not manage a "current" R or a global shim — every
+# symlink onto PATH here is one we own and must keep in sync with
+# bakery.yaml's R dependency. `R`/`Rscript` need to be resolvable on PATH for
+# Positron's ark runtime, matching how rig exposed them before.
+RUN ln -s /opt/R/4.6.1 /opt/R/default && \
+    ln -s /opt/R/4.6.1/bin/R /usr/local/bin/R && \
+    ln -s /opt/R/4.6.1/bin/Rscript /usr/local/bin/Rscript
+
+# r.j2's install() does not write Rprofile.site at all (confirmed empirically —
+# a fresh r-install produces no Rprofile.site whatsoever), unlike rig, which the
+# prototype relied on implicitly for nothing in particular here — this file has
+# always been written by hand. Without it, install.packages() falls back to
+# building from source instead of pulling P3M binaries.
+RUN R_HOME_DIR="/opt/R/4.6.1/lib/R" && \
+    printf '%s\n' \
+        'options(repos = c(P3M = "https://p3m.dev/cran/__linux__/noble/latest"))' \
+        'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version["platform"], R.version["arch"], R.version["os"])))' \
+        > "${R_HOME_DIR}/etc/Rprofile.site"
+
+# No IRkernel::installspec: Positron uses its own R runtime (ark), not the
+# Jupyter R kernel, and we strip all kernelspecs below for a Positron-only
+# launcher. The IRkernel package stays installed (harmless) but registers no
+# launcher tile.
+RUN /opt/R/4.6.1/bin/R --vanilla -e 'install.packages(c("IRkernel", "tidyverse", "data.table", "shiny", "odbc", "DBI"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)'
+
 
 # --- Quarto ----------------------------------------------------------------
 # Installed via the Posit Open apt repository (quarto.j2), not the GitHub CDN
