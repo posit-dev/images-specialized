@@ -107,3 +107,17 @@ images:
             version: 4.6.1
           - dependency: python
             version: 3.14.6
+  - name: positron-sagemaker
+    displayName: Positron on SageMaker
+    description: A custom JupyterLab image that runs Posit's Positron IDE inside
+      Amazon SageMaker Studio, built on the sagemaker-distribution base image.
+    documentationUrl: https://github.com/posit-dev/positron-sagemaker
+    versions:
+      - name: 2026.07.1-5
+        subpath: '2026.07'
+        latest: true
+        os:
+          - name: Ubuntu 24.04
+            primary: true
+            platforms:
+              - linux/amd64
