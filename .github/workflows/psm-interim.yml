@@ -1,0 +1,35 @@
+# INTERIM WORKFLOW — remove in Phase 2 (posit-dev/positron-sagemaker#13).
+#
+# positron-sagemaker/ is not yet a Bakery-registered image (that's Phase 2),
+# so the shared bakery-build-pr.yml job in pr.yml does not build it. This
+# small path-filtered job exists only to give pushes to positron-sagemaker/
+# CI feedback in the meantime, by running a plain `docker build`. Delete
+# this file once the image is migrated onto Bakery and picked up by pr.yml.
+name: PSM Interim Build
+
+on:
+  pull_request:
+    paths:
+      - "positron-sagemaker/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Docker build (interim)
+    runs-on: ubuntu-latest-4x
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build
+        working-directory: positron-sagemaker/image
+        run: |
+          docker build --platform linux/amd64 -t positron-sagemaker:ci .
