@@ -80,16 +80,19 @@ jobs:
           fi
 
           echo "Update available: $CURRENT_VERSION -> $LATEST_VERSION"
-          echo "update_needed=true" >> "$GITHUB_OUTPUT"
-          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "latest_version=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
 
           # Matches the EDITION/DISPLAY_VERSION convention used in
           # release.yml/product-release.yml: strip any +/- build suffix, then
           # the trailing patch segment, to get the YYYY.MM subpath.
           DISPLAY_VERSION="${LATEST_VERSION%%[+-]*}"
           EDITION="${DISPLAY_VERSION%.*}"
-          echo "edition=$EDITION" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "update_needed=true"
+            echo "current_version=$CURRENT_VERSION"
+            echo "latest_version=$LATEST_VERSION"
+            echo "edition=$EDITION"
+          } >> "$GITHUB_OUTPUT"
 
       # Resolves whatever :latest-cpu currently points at to a concrete,
       # pinnable X.Y.Z-cpu tag, using ECR Public's anonymous registry token --
@@ -138,8 +141,10 @@ jobs:
             positron-sagemaker/template/Containerfile.ubuntu2404.jinja2 | head -1)
 
           echo "Resolved base image tag: $RESOLVED_BASE_TAG (currently pinned: $CURRENT_BASE_TAG)"
-          echo "resolved_base_tag=$RESOLVED_BASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "current_base_tag=$CURRENT_BASE_TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "resolved_base_tag=$RESOLVED_BASE_TAG"
+            echo "current_base_tag=$CURRENT_BASE_TAG"
+          } >> "$GITHUB_OUTPUT"
 
       # Base image stays pinned (not tracking :latest-cpu) -- only bump the
       # literal tag when it's actually changed, reviewed alongside the
