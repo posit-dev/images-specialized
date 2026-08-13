@@ -1,4 +1,4 @@
-name: PSM Update
+name: Positron Update
 on:
   workflow_dispatch:
 
