@@ -35,11 +35,6 @@ ARG POSITRON_VERSION=2026.07.1-5
 # inference profile). Overridable at build time with --build-arg.
 ARG POSITRON_BEDROCK_MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
 
-# Posit Professional Drivers version to download from the Posit CDN. The bundle
-# is a single .deb containing all drivers (Athena, Snowflake, Redshift, ...).
-# Override with --build-arg PRODRIVERS_VERSION=... to track a different release.
-ARG PRODRIVERS_VERSION=2026.04.0
-
 # AWS Toolkit VS Code extension version to download from the Open VSX registry
 # (Positron's extension gallery). Override with --build-arg AWS_TOOLKIT_VERSION=...
 ARG AWS_TOOLKIT_VERSION=4.6.1
@@ -148,26 +143,32 @@ RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
     rm -rf /var/lib/apt/lists/*
 
 # --- Posit Professional Drivers (ODBC) -------------------------------------
-# The Pro Drivers ship as one .deb bundle (all drivers) on the Posit CDN
-# (7C152C12 is Posit's fixed Pro Drivers CDN distribution id, not version-
-# specific). They use the SYSTEM unixODBC driver manager (they do not bundle
-# one), so install unixodbc/unixodbc-dev first; an absolute (or `./`-prefixed)
-# path tells apt to install a local .deb file rather than a named package, which
-# also pulls the bundle's remaining deps (libaio, libsasl2). The bundle installs under
+# Installed from the Posit Pro apt repository (apt.setup_posit_repo("pro")),
+# not the fixed-distribution-id CDN .deb bundle the prototype downloaded
+# directly — that also drops the PRODRIVERS_VERSION build arg and the
+# 7C152C12 CDN distribution id entirely, since the apt package is versioned
+# and resolved through the repo instead. They use the SYSTEM unixODBC driver
+# manager (they do not bundle one), so install unixodbc/unixodbc-dev
+# alongside the rstudio-drivers package itself. The package installs under
 # /opt/rstudio-drivers/ and ships an odbcinst.ini.sample with absolute paths
 # already resolved — append it to /etc/odbcinst.ini to register every driver
 # (the Athena .so is /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so).
+# Verified against the pinned base image: rstudio-drivers=2026.04.0 (the same
+# version the CDN bundle pinned) is available from the repo verbatim, with a
+# byte-identical /opt/rstudio-drivers/ layout and odbcinst.ini.sample content,
+# and registering the repo does not disturb conda.
 # Licensing is contractual only: the drivers do no runtime license check, and
 # shipping Positron (a licensed Posit product) covers the entitlement — so unlike
 # the Positron runtime license, there is nothing to fetch here.
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends unixodbc unixodbc-dev \
-    && curl -fsSL "https://cdn.posit.co/drivers/7C152C12/installer/rstudio-drivers_${PRODRIVERS_VERSION}_amd64.deb" \
-        -o /tmp/rstudio-drivers.deb \
-    && apt-get install -y --no-install-recommends /tmp/rstudio-drivers.deb \
-    && cat /opt/rstudio-drivers/odbcinst.ini.sample >> /etc/odbcinst.ini \
-    && rm -f /tmp/rstudio-drivers.deb \
-    && rm -rf /var/lib/apt/lists/*
+RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
+    apt-get update -yqq && \
+    apt-get install -yqq --no-install-recommends \
+        unixodbc \
+        unixodbc-dev \
+        rstudio-drivers=2026.04.0 && \
+    cat /opt/rstudio-drivers/odbcinst.ini.sample >> /etc/odbcinst.ini && \
+    apt-get clean -yqq && \
+    rm -rf /var/lib/apt/lists/*
 
 # unixODBC may be present from both the system (apt) and the conda env; force
 # both R `odbc` and Python `pyodbc` to read the registration we wrote to
