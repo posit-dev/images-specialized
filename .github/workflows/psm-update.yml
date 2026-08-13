@@ -1,0 +1,190 @@
+name: PSM Update
+on:
+  workflow_dispatch:
+
+  schedule:
+    # Daily -- this is a cheap version-check, not a full image build (unlike
+    # the weekly WGCW/WAML rebuild schedules), so there's no cost reason to
+    # wait a week to notice a new Positron release.
+    - cron: "30 4 * * *" # At 04:30 daily
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+# Security policy: No ${{ }} expressions in `run:` blocks.
+# All expression values are assigned to `env:` and referenced as
+# shell variables. This prevents script injection from runtime values
+# and keeps the rule enforceable by zizmor without per-expression exceptions.
+
+jobs:
+  update:
+    name: Check for Positron update
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: GitHub App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.WORKBENCH_IDE_RELEASE_CLIENT_ID }}
+          private-key: ${{ secrets.WORKBENCH_IDE_RELEASE_PEM }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install bakery
+        uses: "posit-dev/images-shared/setup-bakery@main"
+
+      # Compares the CDN's newest Positron release against what's pinned in
+      # bakery.yaml. The pwb (Workbench) release manifest is used rather than
+      # a "server" one because no such manifest exists (probed and confirmed
+      # 403 earlier this epic) -- the pwb and server release trains share the
+      # same version numbers even though this image installs a different
+      # artifact (the plain server tarball, not the pwb bundle).
+      - name: Detect latest Positron version
+        id: positron
+        run: |
+          CURRENT_VERSION=$(bakery get version positron-sagemaker)
+          MANIFEST=$(curl -sf "https://cdn.posit.co/positron/releases/pwb/x86_64/all-releases.json")
+
+          # Version-aware max, not "first in list": splits each version into
+          # (release, build) -- e.g. "2026.08.1-2" -> release "2026.08.1",
+          # build "2" -- and compares numerically, since the manifest's
+          # ordering is not guaranteed.
+          LATEST_VERSION=$(echo "$MANIFEST" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          versions = [r['version'] for r in data['releases']]
+
+          def sort_key(v):
+              release, _, build = v.partition('-')
+              release_parts = tuple(int(x) for x in release.split('.'))
+              build_part = int(build) if build else 0
+              return (release_parts, build_part)
+
+          versions.sort(key=sort_key)
+          print(versions[-1])
+          ")
+
+          if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+            echo "Up to date ($CURRENT_VERSION); nothing to do."
+            echo "update_needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Update available: $CURRENT_VERSION -> $LATEST_VERSION"
+          echo "update_needed=true" >> "$GITHUB_OUTPUT"
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "latest_version=$LATEST_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Matches the EDITION/DISPLAY_VERSION convention used in
+          # release.yml/product-release.yml: strip any +/- build suffix, then
+          # the trailing patch segment, to get the YYYY.MM subpath.
+          DISPLAY_VERSION="${LATEST_VERSION%%[+-]*}"
+          EDITION="${DISPLAY_VERSION%.*}"
+          echo "edition=$EDITION" >> "$GITHUB_OUTPUT"
+
+      # Resolves whatever :latest-cpu currently points at to a concrete,
+      # pinnable X.Y.Z-cpu tag, using ECR Public's anonymous registry token --
+      # no AWS credentials needed. See the epic's positron-sagemaker#15 comment
+      # for why this rides on the Positron update workflow rather than a
+      # separate poller or a Bakery dependency type.
+      - name: Resolve current sagemaker-distribution CPU tag
+        id: base_image
+        if: steps.positron.outputs.update_needed == 'true'
+        run: |
+          TOKEN=$(curl -sf "https://public.ecr.aws/token/?service=public.ecr.aws&scope=repository:sagemaker/sagemaker-distribution:pull" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])")
+
+          LATEST_DIGEST=$(curl -sfI -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+            "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/manifests/latest-cpu" \
+            | grep -i '^docker-content-digest:' | tr -d '\r' | awk '{print $2}')
+
+          ALL_TAGS=$(curl -sf -H "Authorization: Bearer $TOKEN" \
+            "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/tags/list" \
+            | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['tags']))")
+
+          # Check newest-first (sort -V descending): the highest semver tag is
+          # virtually always what 'latest' points at, so this normally matches
+          # on the first attempt rather than scanning the full tag history.
+          CANDIDATE_TAGS=$(echo "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-cpu$' | sed 's/-cpu$//' | sort -rV | sed 's/$/-cpu/')
+
+          RESOLVED_BASE_TAG=""
+          for TAG in $CANDIDATE_TAGS; do
+            DIGEST=$(curl -sfI -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+              "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/manifests/$TAG" 2>/dev/null \
+              | grep -i '^docker-content-digest:' | tr -d '\r' | awk '{print $2}' || true)
+            if [ "$DIGEST" = "$LATEST_DIGEST" ]; then
+              RESOLVED_BASE_TAG="$TAG"
+              break
+            fi
+          done
+
+          if [ -z "$RESOLVED_BASE_TAG" ]; then
+            echo "::error::Could not resolve latest-cpu to a concrete X.Y.Z-cpu tag"
+            exit 1
+          fi
+
+          CURRENT_BASE_TAG=$(grep -oP 'sagemaker-distribution:\K[0-9]+\.[0-9]+\.[0-9]+-cpu' \
+            positron-sagemaker/template/Containerfile.ubuntu2404.jinja2 | head -1)
+
+          echo "Resolved base image tag: $RESOLVED_BASE_TAG (currently pinned: $CURRENT_BASE_TAG)"
+          echo "resolved_base_tag=$RESOLVED_BASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "current_base_tag=$CURRENT_BASE_TAG" >> "$GITHUB_OUTPUT"
+
+      # Base image stays pinned (not tracking :latest-cpu) -- only bump the
+      # literal tag when it's actually changed, reviewed alongside the
+      # Positron bump in the same PR.
+      - name: Update base image pin
+        if: steps.positron.outputs.update_needed == 'true' && steps.base_image.outputs.resolved_base_tag != steps.base_image.outputs.current_base_tag
+        env:
+          OLD_TAG: ${{ steps.base_image.outputs.current_base_tag }}
+          NEW_TAG: ${{ steps.base_image.outputs.resolved_base_tag }}
+        run: |
+          sed -i "s/${OLD_TAG}/${NEW_TAG}/g" positron-sagemaker/template/Containerfile.ubuntu2404.jinja2
+
+      - name: Create version
+        if: steps.positron.outputs.update_needed == 'true'
+        env:
+          NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
+          EDITION: ${{ steps.positron.outputs.edition }}
+        run: |
+          bakery create version positron-sagemaker "$NEW_VERSION" --subpath "$EDITION" --mark-latest --force
+
+      - name: Create pull request
+        if: steps.positron.outputs.update_needed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OLD_VERSION: ${{ steps.positron.outputs.current_version }}
+          NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
+          OLD_BASE_TAG: ${{ steps.base_image.outputs.current_base_tag }}
+          NEW_BASE_TAG: ${{ steps.base_image.outputs.resolved_base_tag }}
+        run: |
+          BRANCH="positron-update-${NEW_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "Bump Positron to ${NEW_VERSION}"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          BODY="Bumps Positron on SageMaker from \`${OLD_VERSION}\` to \`${NEW_VERSION}\`."
+          if [ "$OLD_BASE_TAG" != "$NEW_BASE_TAG" ]; then
+            BODY+=$'\n\n'"Also bumps the pinned base image: \`${OLD_BASE_TAG}\` -> \`${NEW_BASE_TAG}\`."
+          fi
+          BODY+=$'\n\n'"Opened automatically by the update workflow. Requires human review before merging."
+
+          gh pr create \
+            --title "Bump Positron to ${NEW_VERSION}" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH" || echo "PR already exists"
