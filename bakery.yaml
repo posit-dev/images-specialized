@@ -133,3 +133,5 @@ images:
             version: 1.9.38
           - dependency: R
             version: 4.6.1
+        values:
+          PRODRIVERS_VERSION: 2026.04.0
