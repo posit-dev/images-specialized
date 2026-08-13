@@ -148,25 +148,21 @@ RUN R_HOME_DIR="{{ r.get_version_directory(Dependencies.R.0) }}/lib/R" && \
 {{ quarto.run_install(Dependencies.quarto) }}
 
 # --- Posit Professional Drivers (ODBC) -------------------------------------
-# Installed from the Posit Pro apt repository (apt.setup_posit_repo("pro")),
-# not the fixed-distribution-id CDN .deb bundle the prototype downloaded
-# directly — that also drops the PRODRIVERS_VERSION build arg and the
-# 7C152C12 CDN distribution id entirely, since the apt package is versioned
-# and resolved through the repo instead. They use the SYSTEM unixODBC driver
-# manager (they do not bundle one), so install unixodbc/unixodbc-dev
+# Installed from the Posit Pro apt repository (apt.setup_posit_repo("pro")).
+# Deliberately unpinned: always installs whatever the repo currently serves
+# as the rstudio-drivers package, so a rebuild always ships the latest
+# drivers rather than requiring a version bump. They use the SYSTEM unixODBC
+# driver manager (they do not bundle one), so install unixodbc/unixodbc-dev
 # alongside the rstudio-drivers package itself. The package installs under
 # /opt/rstudio-drivers/ and ships an odbcinst.ini.sample with absolute paths
 # already resolved — append it to /etc/odbcinst.ini to register every driver
 # (the Athena .so is /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so).
-# Verified against the pinned base image: rstudio-drivers=2026.04.0 (the same
-# version the CDN bundle pinned) is available from the repo verbatim, with a
-# byte-identical /opt/rstudio-drivers/ layout and odbcinst.ini.sample content,
-# and registering the repo does not disturb conda.
+# Registering the repo and installing from it does not disturb conda.
 # Licensing is contractual only: the drivers do no runtime license check, and
 # shipping Positron (a licensed Posit product) covers the entitlement — so unlike
 # the Positron runtime license, there is nothing to fetch here.
 RUN {{ apt.setup_posit_repo("pro") | indent(4) }} && \
-    {{ apt.install(packages = ["unixodbc", "unixodbc-dev", "rstudio-drivers=" ~ PRODRIVERS_VERSION], clean = False) | trim | indent(4) }} && \
+    {{ apt.install(packages = ["unixodbc", "unixodbc-dev", "rstudio-drivers"], clean = False) | trim | indent(4) }} && \
     cat /opt/rstudio-drivers/odbcinst.ini.sample >> /etc/odbcinst.ini && \
     {{ apt.clean_command() | indent(4) }}
 
