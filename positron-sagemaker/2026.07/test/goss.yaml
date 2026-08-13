@@ -136,10 +136,12 @@ file:
   # --- Baked AWS credential-bridge profile exists ----------------------------
   # See README.md "AWS credential bridge (design)": wires the execution role
   # into tools (AWS Toolkit) that resolve a profile instead of the raw default
-  # credential chain.
+  # credential chain. Matched against the full credential_process directive
+  # rather than the "[default]" header, since square brackets are regexp
+  # metacharacters in goss's `contains` matcher and both "[default]" and
+  # "credential_process" also appear verbatim in this file's own comments.
   /etc/positron/aws-config:
     exists: true
     filetype: file
     contains:
-      - "[default]"
-      - credential_process
+      - "credential_process = /usr/bin/env -u AWS_CONFIG_FILE -u AWS_PROFILE -u _AWS_CLI_PROFILE_CHAIN /usr/local/bin/aws configure export-credentials --format process"
