@@ -155,10 +155,12 @@ jobs:
       - name: Create version
         if: steps.positron.outputs.update_needed == 'true'
         env:
+          OLD_VERSION: ${{ steps.positron.outputs.current_version }}
           NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
           EDITION: ${{ steps.positron.outputs.edition }}
         run: |
-          bakery create version positron-sagemaker "$NEW_VERSION" --subpath "$EDITION" --mark-latest --force
+          bakery create version positron-sagemaker "$NEW_VERSION" --subpath "$EDITION" --mark-latest --force \
+            --diff-against "$OLD_VERSION" > "$RUNNER_TEMP/diff-positron-sagemaker.md"
 
       - name: Create pull request
         if: steps.positron.outputs.update_needed == 'true'
@@ -188,3 +190,42 @@ jobs:
             --body "$BODY" \
             --base main \
             --head "$BRANCH" || echo "PR already exists"
+
+      # Same marker-based idempotent comment pattern as
+      # product-release.yml, so re-running the workflow (e.g. before the PR
+      # is reviewed) updates the same comment instead of piling up duplicates.
+      - name: Post or update diff comment
+        if: steps.positron.outputs.update_needed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
+        run: |
+          BRANCH="positron-update-${NEW_VERSION}"
+          MARKER="<!-- bakery-release-diff -->"
+          DIFF_FILE="$RUNNER_TEMP/diff-positron-sagemaker.md"
+
+          if [ ! -s "$DIFF_FILE" ]; then
+            echo "No diff content generated; skipping comment."
+            exit 0
+          fi
+
+          BODY_FILE="$RUNNER_TEMP/diff-comment.md"
+          {
+            echo "$MARKER"
+            echo "## Rendered file changes"
+            echo
+            cat "$DIFF_FILE"
+          } > "$BODY_FILE"
+
+          PR_NUMBER=$(gh pr view "$BRANCH" --json number -q .number)
+
+          EXISTING_COMMENT_ID=$(gh api "repos/{owner}/{repo}/issues/$PR_NUMBER/comments" \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))][0].id")
+
+          if [ -n "$EXISTING_COMMENT_ID" ] && [ "$EXISTING_COMMENT_ID" != "null" ]; then
+            gh api "repos/{owner}/{repo}/issues/comments/$EXISTING_COMMENT_ID" \
+              -X PATCH -F body=@"$BODY_FILE"
+          else
+            gh pr comment "$BRANCH" --body-file "$BODY_FILE"
+          fi
