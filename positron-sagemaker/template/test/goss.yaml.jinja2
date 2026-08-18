@@ -20,6 +20,12 @@ Ubuntu release.
 
 command:
   # --- positron-server, quarto, R, uv, and python on PATH -------------------
+  # uv/python/python3 are additionally asserted to resolve from the base
+  # image's conda env (/opt/conda/bin) rather than merely "on PATH somewhere"
+  # -- that's where the Dockerfile installs uv (see the pip install RUN
+  # block) and where the base image's own Python lives, so a regression that
+  # shadowed either with some other interpreter would slip past a bare
+  # `which` check.
   positron-server-on-path:
     exec: "which positron-server"
     exit-status: 0
@@ -32,9 +38,21 @@ command:
   uv-on-path:
     exec: "which uv"
     exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/uv$/"
   python-on-path:
     exec: "which python"
     exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/python$/"
+  # python3 is checked separately from python: jupyter_server_config.py's
+  # license-error fallback server shells out via "/usr/bin/env python3" (not
+  # "python"), so python3 specifically must resolve on PATH.
+  python3-on-path:
+    exec: "which python3"
+    exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/python3$/"
 
   # --- Installed versions match the pinned values ---------------------------
   # positron-server prints "Positron: <version> build <build>" for a version
