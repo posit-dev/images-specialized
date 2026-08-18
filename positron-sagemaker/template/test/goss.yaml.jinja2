@@ -1,0 +1,213 @@
+{#-
+Below are imports for Bakery's macros. If any are unneeded, they can be removed.
+Bakery handles bootstrapping the files into template rendering.
+-#}
+{%- import "r.j2" as r -%}
+{#-
+Matches the r_os set in the Containerfile template: Image.OS isn't populated
+for an image with no variants, so the P3M repo URL asserted below is built
+from the same hardcoded codename rather than a runtime-detected one. Update
+alongside the Containerfile if the base image ever moves to a different
+Ubuntu release.
+-#}
+{%- set r_os = {"Name": "ubuntu", "Codename": "noble"} -%}
+
+# Structural checks only (installed versions, files, env vars) -- this image
+# runs a full SageMaker Studio JupyterLab app, not a simple service dgoss can
+# health-check by port/process, so there's no "wait" needed and no server to
+# talk to here. Runtime/launch behavior on the actual SageMaker platform is a
+# separate, later concern (posit-dev/platform-team#460).
+
+command:
+  # --- positron-server, quarto, R, uv, and python on PATH -------------------
+  # uv/python/python3 are additionally asserted to resolve from the base
+  # image's conda env (/opt/conda/bin) rather than merely "on PATH somewhere"
+  # -- that's where the Dockerfile installs uv (see the pip install RUN
+  # block) and where the base image's own Python lives, so a regression that
+  # shadowed either with some other interpreter would slip past a bare
+  # `which` check.
+  positron-server-on-path:
+    exec: "which positron-server"
+    exit-status: 0
+  quarto-on-path:
+    exec: "which quarto"
+    exit-status: 0
+  r-on-path:
+    exec: "which R"
+    exit-status: 0
+  uv-on-path:
+    exec: "which uv"
+    exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/uv$/"
+  python-on-path:
+    exec: "which python"
+    exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/python$/"
+  # python3 is checked separately from python: jupyter_server_config.py's
+  # license-error fallback server shells out via "/usr/bin/env python3" (not
+  # "python"), so python3 specifically must resolve on PATH.
+  python3-on-path:
+    exec: "which python3"
+    exit-status: 0
+    stdout:
+      - "/^\\/opt\\/conda\\/bin\\/python3$/"
+
+  # --- Installed versions match the pinned values ---------------------------
+  # positron-server prints "Positron: <version> build <build>" for a version
+  # string of the form "<version>-<build>" (e.g. "2026.07.1-5"); the CDN
+  # tarball this image installs is always named with that pattern.
+  positron-server-version:
+    exec: "positron-server --version"
+    exit-status: 0
+    stdout:
+      - "/^Positron: {{ Image.Version | replace('-', ' build ') }}$/"
+  quarto-version:
+    exec: "quarto --version"
+    exit-status: 0
+    stdout:
+      - "/^{{ Dependencies.quarto.0 }}$/"
+  r-version:
+    exec: "R --version"
+    exit-status: 0
+    # No trailing `$` here (unlike positron-server/quarto above): R's first
+    # line has more after the version ("R version 4.6.1 (2026-06-24) -- ..."),
+    # so a trailing space stands in for the end anchor instead -- enough to
+    # stop "4.6.1" from also matching a future "4.6.10".
+    stdout:
+      - "/^R version {{ Dependencies.R.0 }} /"
+
+  # --- No Jupyter kernel exists (Positron-only launcher) ---------------------
+  # Mirrors the build-time assertion in the Containerfile: every kernels/ dir
+  # under Jupyter's data paths was removed, and the synthetic "python3" kernel
+  # ipykernel always exposes is suppressed via ensure_native_kernel=False.
+  no-jupyter-kernelspecs:
+    exec: "jupyter kernelspec list --json --KernelSpecManager.ensure_native_kernel=False"
+    exit-status: 0
+    stdout:
+      - '"kernelspecs": {}'
+
+  # --- Required environment variables ----------------------------------------
+  # ODBCSYSINI: forces R odbc/Python pyodbc to read /etc/odbcinst.ini (the Pro
+  # Drivers registration) instead of a conda-shipped driver manager's config.
+  odbcsysini-env:
+    exec: "printenv ODBCSYSINI"
+    exit-status: 0
+    stdout:
+      - "/etc"
+  # JSP_POSITRON_LAUNCHER_DISABLED: suppresses jupyter-positron-server's own
+  # duplicate launcher tile in favor of the one registered in
+  # jupyter_server_config.py.
+  jsp-positron-launcher-disabled-env:
+    exec: "printenv JSP_POSITRON_LAUNCHER_DISABLED"
+    exit-status: 0
+    stdout:
+      - "1"
+
+user:
+  # --- The runtime user's uid/gid stay pinned to the base image's default ---
+  # jupyter_server_config.py writes license.lic under the activation dir
+  # (below) at startup, so the numeric ids matter, not just the names --
+  # `owner`/`group` on the file resources below only assert the NAMES resolve
+  # correctly, so pin the underlying ids here too in case the base image ever
+  # changes what "sagemaker-user"/"users" map to.
+  sagemaker-user:
+    exists: true
+    uid: 1000
+    gid: 100
+
+group:
+  users:
+    exists: true
+    gid: 100
+
+file:
+  # --- Activation directory owner/group --------------------------------------
+  # jupyter_server_config.py writes the fetched license.lic here at startup;
+  # it must be writable by the runtime user (sagemaker-user, uid 1000, gid 100
+  # / group "users" -- the base image's default, not one this image creates).
+  /opt/positron-server/resources/activation:
+    exists: true
+    filetype: directory
+    owner: sagemaker-user
+    group: users
+  # The license-manager binary and license.lic itself land one level deeper,
+  # under the architecture-specific subdir jupyter_server_config.py actually
+  # writes to (_POSITRON_ACTIVATION_DIR); same ownership requirement applies.
+  /opt/positron-server/resources/activation/linux/x86_64:
+    exists: true
+    filetype: directory
+    owner: sagemaker-user
+    group: users
+
+  # --- Rprofile.site contains the P3M repository and HTTPUserAgent lines ----
+  # r.j2's install() does not write this file; it's written by hand in the
+  # Containerfile and asserted here byte-for-byte against the same macro call
+  # used to generate it.
+  {{ r.get_version_directory(Dependencies.R.0) }}/lib/R/etc/Rprofile.site:
+    exists: true
+    filetype: file
+    contents:
+      - 'options(repos = c(P3M = "{{ r.get_p3m_cran_repo(r_os) }}"))'
+      - 'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version["platform"], R.version["arch"], R.version["os"])))'
+
+  # --- AWS Toolkit extension is present ---------------------------------------
+  /opt/positron-server/extensions/amazonwebservices.aws-toolkit-vscode/package.json:
+    exists: true
+    filetype: file
+
+  # --- ODBC driver entries are registered, and the driver file exists --------
+  # Matched against full driver paths rather than bare `[SectionName]`
+  # headers: goss's `contents` only treats a string as a regex when wrapped in
+  # `/.../`, so brackets aren't actually a parsing hazard here, but the
+  # odbcinst.ini we append this to (rstudio-drivers' odbcinst.ini.sample)
+  # lists every supported vendor, not just the three used by this image -- the
+  # full driver path is unambiguous either way.
+  /etc/odbcinst.ini:
+    exists: true
+    filetype: file
+    contents:
+      - Driver = /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so
+      - Driver = /opt/rstudio-drivers/snowflake/bin/lib/libsnowflakeodbc_sb64.so
+      - Driver = /opt/rstudio-drivers/redshift/bin/lib/libamazonredshiftodbc_sb64.so
+  # Athena, Snowflake, and Redshift are the drivers actually exercised by this
+  # image (README.md); check all three .so files exist, not just Athena's.
+  /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so:
+    exists: true
+    filetype: file
+  /opt/rstudio-drivers/snowflake/bin/lib/libsnowflakeodbc_sb64.so:
+    exists: true
+    filetype: file
+  /opt/rstudio-drivers/redshift/bin/lib/libamazonredshiftodbc_sb64.so:
+    exists: true
+    filetype: file
+
+  # --- Posit Assistant enforced settings: enabled, and the Bedrock model
+  # placeholder was actually substituted (positron-sagemaker
+  # docs/design-native-image.md: "Verify the exact enforced-settings contract
+  # at build time"). The exact model id isn't asserted here -- it's a
+  # Dockerfile ARG default, not a Bakery-tracked value -- only that the sed
+  # substitution ran. Checked with a `!`-prefixed negative matcher directly in
+  # `contents` (a plain or regex string prefixed with `!` asserts the pattern
+  # is ABSENT), rather than a separate command check.
+  /etc/positron/enforced-settings.json:
+    exists: true
+    filetype: file
+    contents:
+      - '"positron.assistant.enable": true'
+      - '"positron.assistant.provider.amazonBedrock.enable": true'
+      - '!__POSITRON_BEDROCK_MODEL__'
+
+  # --- Baked AWS credential-bridge profile exists ----------------------------
+  # See README.md "AWS credential bridge (design)": wires the execution role
+  # into tools (AWS Toolkit) that resolve a profile instead of the raw default
+  # credential chain. Matched against the full credential_process directive
+  # rather than the bare "[default]" header, since both "[default]" and
+  # "credential_process" already appear verbatim in this file's own comments
+  # and would pass a substring check on the comment block alone.
+  /etc/positron/aws-config:
+    exists: true
+    filetype: file
+    contents:
+      - "credential_process = /usr/bin/env -u AWS_CONFIG_FILE -u AWS_PROFILE -u _AWS_CLI_PROFILE_CHAIN /usr/local/bin/aws configure export-credentials --format process"

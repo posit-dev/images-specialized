@@ -1,0 +1,7 @@
+# Positron Server tarball — large licensed binary, fetched out-of-band. Never commit.
+positron-server-linux-*.tar.gz
+positron-reh-*.tar.gz
+
+# License signing keys (PEM). Only ever needed locally for testing. Never
+# commit a private key.
+*.pem
