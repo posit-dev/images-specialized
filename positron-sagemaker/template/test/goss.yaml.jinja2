@@ -171,7 +171,15 @@ file:
       - Driver = /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so
       - Driver = /opt/rstudio-drivers/snowflake/bin/lib/libsnowflakeodbc_sb64.so
       - Driver = /opt/rstudio-drivers/redshift/bin/lib/libamazonredshiftodbc_sb64.so
+  # Athena, Snowflake, and Redshift are the drivers actually exercised by this
+  # image (README.md); check all three .so files exist, not just Athena's.
   /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so:
+    exists: true
+    filetype: file
+  /opt/rstudio-drivers/snowflake/bin/lib/libsnowflakeodbc_sb64.so:
+    exists: true
+    filetype: file
+  /opt/rstudio-drivers/redshift/bin/lib/libamazonredshiftodbc_sb64.so:
     exists: true
     filetype: file
 
