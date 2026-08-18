@@ -69,15 +69,6 @@ command:
     stdout:
       - "1"
 
-  # --- Enforced-settings placeholder substitution actually ran --------------
-  # The Containerfile sed's __POSITRON_BEDROCK_MODEL__ in at build time; if
-  # that ever silently no-ops (e.g. a changed placeholder string), the
-  # Assistant would end up with a literal, invalid model id. goss's file
-  # `contains` has no negative-match form, so this is a command check instead.
-  enforced-settings-placeholder-substituted:
-    exec: "! grep -q '__POSITRON_BEDROCK_MODEL__' /etc/positron/enforced-settings.json"
-    exit-status: 0
-
 file:
   # --- Activation directory owner/group --------------------------------------
   # jupyter_server_config.py writes the fetched license.lic here at startup;
@@ -96,7 +87,7 @@ file:
   /opt/R/4.6.1/lib/R/etc/Rprofile.site:
     exists: true
     filetype: file
-    contains:
+    contents:
       - 'options(repos = c(P3M = "https://p3m.dev/cran/__linux__/noble/latest"))'
       - 'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version["platform"], R.version["arch"], R.version["os"])))'
 
@@ -106,12 +97,16 @@ file:
     filetype: file
 
   # --- ODBC driver entries are registered, and the driver file exists --------
-  # Matched against driver paths rather than [SectionName] headers, since
-  # square brackets are regexp metacharacters in goss's `contains` matcher.
+  # Matched against full driver paths rather than bare `[SectionName]`
+  # headers: goss's `contents` only treats a string as a regex when wrapped in
+  # `/.../`, so brackets aren't actually a parsing hazard here, but the
+  # odbcinst.ini we append this to (rstudio-drivers' odbcinst.ini.sample)
+  # lists every supported vendor, not just the three used by this image -- the
+  # full driver path is unambiguous either way.
   /etc/odbcinst.ini:
     exists: true
     filetype: file
-    contains:
+    contents:
       - Driver = /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so
       - Driver = /opt/rstudio-drivers/snowflake/bin/lib/libsnowflakeodbc_sb64.so
       - Driver = /opt/rstudio-drivers/redshift/bin/lib/libamazonredshiftodbc_sb64.so
@@ -124,24 +119,26 @@ file:
   # docs/design-native-image.md: "Verify the exact enforced-settings contract
   # at build time"). The exact model id isn't asserted here -- it's a
   # Dockerfile ARG default, not a Bakery-tracked value -- only that the sed
-  # substitution ran, checked as a command since goss's file `contains` has no
-  # negative-match form.
+  # substitution ran. Checked with a `!`-prefixed negative matcher directly in
+  # `contents` (a plain or regex string prefixed with `!` asserts the pattern
+  # is ABSENT), rather than a separate command check.
   /etc/positron/enforced-settings.json:
     exists: true
     filetype: file
-    contains:
+    contents:
       - '"positron.assistant.enable": true'
       - '"positron.assistant.provider.amazonBedrock.enable": true'
+      - '!__POSITRON_BEDROCK_MODEL__'
 
   # --- Baked AWS credential-bridge profile exists ----------------------------
   # See README.md "AWS credential bridge (design)": wires the execution role
   # into tools (AWS Toolkit) that resolve a profile instead of the raw default
   # credential chain. Matched against the full credential_process directive
-  # rather than the "[default]" header, since square brackets are regexp
-  # metacharacters in goss's `contains` matcher and both "[default]" and
-  # "credential_process" also appear verbatim in this file's own comments.
+  # rather than the bare "[default]" header, since both "[default]" and
+  # "credential_process" already appear verbatim in this file's own comments
+  # and would pass a substring check on the comment block alone.
   /etc/positron/aws-config:
     exists: true
     filetype: file
-    contains:
+    contents:
       - "credential_process = /usr/bin/env -u AWS_CONFIG_FILE -u AWS_PROFILE -u _AWS_CLI_PROFILE_CHAIN /usr/local/bin/aws configure export-credentials --format process"
