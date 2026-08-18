@@ -44,17 +44,21 @@ command:
     exec: "positron-server --version"
     exit-status: 0
     stdout:
-      - "Positron: {{ Image.Version | replace('-', ' build ') }}"
+      - "/^Positron: {{ Image.Version | replace('-', ' build ') }}$/"
   quarto-version:
     exec: "quarto --version"
     exit-status: 0
     stdout:
-      - "{{ Dependencies.quarto.0 }}"
+      - "/^{{ Dependencies.quarto.0 }}$/"
   r-version:
     exec: "R --version"
     exit-status: 0
+    # No trailing `$` here (unlike positron-server/quarto above): R's first
+    # line has more after the version ("R version 4.6.1 (2026-06-24) -- ..."),
+    # so a trailing space stands in for the end anchor instead -- enough to
+    # stop "4.6.1" from also matching a future "4.6.10".
     stdout:
-      - "R version {{ Dependencies.R.0 }}"
+      - "/^R version {{ Dependencies.R.0 }} /"
 
   # --- No Jupyter kernel exists (Positron-only launcher) ---------------------
   # Mirrors the build-time assertion in the Containerfile: every kernels/ dir
