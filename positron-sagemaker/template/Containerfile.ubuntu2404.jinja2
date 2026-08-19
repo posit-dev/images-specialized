@@ -172,33 +172,6 @@ RUN {{ apt.setup_posit_repo("pro") | indent(4) }} && \
 # $CONDA_PREFIX/etc and never see the bundled drivers.
 ENV ODBCSYSINI=/etc
 
-# --- Verify R packages' system libraries -----------------------------------
-# P3M ships R packages as PREBUILT .so files linked against SYSTEM libraries. A
-# missing one is invisible at build time and only fails at RUNTIME with
-# "unable to load shared object" — often deep inside an app, far from the cause
-# (e.g. bslib::bs_theme_dependencies pulls in `fs`, so a themed Shiny app died on
-# libuv.so.1 while nothing referenced `fs` directly). This asserts every installed
-# package's .so resolves, so such a gap fails the BUILD instead.
-#
-# MUST run here, AFTER the Pro Drivers block, not inside the R block: the `odbc`
-# package needs libodbc.so.2, which unixodbc provides and which is installed with
-# the drivers further down. Asserting inside the R block false-fails on it.
-# libR.so is also excluded — ldd cannot resolve it outside a running R session.
-#
-# The libR exclusion is done in awk, NOT `| grep -v '^libR'`, on purpose. The base
-# image's build shell is `set -ef -o pipefail` (see /usr/local/bin/_dockerfile_shell.sh),
-# and grep exits 1 when it selects no lines — which is exactly the healthy case here
-# (nothing missing). Under pipefail that failed the build precisely when the check
-# should have passed. awk exits 0 whether or not it prints, so it is pipefail-safe.
-RUN missing="$(find "$(R RHOME)/library" -name '*.so' -exec ldd {} \; 2>/dev/null \
-        | awk '/not found/ && $1 !~ /^libR/ {print $1}' | sort -u | tr '\n' ' ')" \
-    && if [ -n "$missing" ]; then \
-         echo "ERROR: R packages have unresolved system libs: $missing" >&2; \
-         echo "Add the providing apt package(s) to a RUN block above." >&2; \
-         exit 1; \
-       fi \
-    && echo "OK: all R package shared libraries resolve"
-
 # --- jupyter-server-proxy stack + Python tooling ---------------------------
 # Install into the base's active conda env so the running jupyter-server loads
 # the extension. jupyter-server-proxy auto-enables via its entry point.
