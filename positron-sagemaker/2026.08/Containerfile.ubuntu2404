@@ -24,28 +24,69 @@ USER root
 # --- Layer ordering (stable -> volatile) -----------------------------------
 # Layers are ordered so a routine version bump invalidates as little build
 # cache as possible. The expensive, rarely-changing toolchain runs FIRST:
-#   1. R (r-install + P3M binary packages: tidyverse, etc. — the slowest layer)
-#   2. Quarto
-#   3. Posit Professional Drivers (ODBC)
-#   4. jupyter-server-proxy stack + Python tooling
-#   5. Remove Jupyter kernelspecs
-#   6. Positron proxy config (COPY + JupyterLab drift asserts)
+#   1. System packages (apt)  — every plain Ubuntu-repo package, one layer
+#   2. R (r-install + P3M binary packages: tidyverse, etc. — the slowest layer)
+#   3. Quarto
+#   4. Posit Professional Drivers (ODBC)
+#   5. jupyter-server-proxy stack + Python tooling
+#   6. Remove Jupyter kernelspecs
+#   7. Positron proxy config (COPY + JupyterLab drift asserts)
 # The frequently-bumped, cheap-to-rebuild artifacts gated on build ARGs run
 # LAST, so bumping any of them never re-runs the toolchain above:
-#   7. Positron Server        (ARG POSITRON_VERSION — tracks each release)
-#   8. AWS Toolkit extension  (ARG AWS_TOOLKIT_VERSION)
-#   9. Posit Assistant / Bedrock enforced settings (ARG POSITRON_BEDROCK_MODEL)
-#  10. Baked default AWS profile
+#   8. Positron Server        (ARG POSITRON_VERSION — tracks each release)
+#   9. AWS Toolkit extension  (ARG AWS_TOOLKIT_VERSION)
+#  10. Posit Assistant / Bedrock enforced settings (ARG POSITRON_BEDROCK_MODEL)
+#  11. Baked default AWS profile
 # (The R-package system-library drift check that used to live between the Pro
 # Drivers and jupyter-server-proxy blocks now runs as a goss test, not a build
 # layer — see test/goss.yaml.jinja2.)
 # Each ARG is declared immediately above the single RUN that consumes it, so a
 # change to one ARG cannot invalidate an unrelated layer above it.
 #
+# apt hygiene: every plain Ubuntu-repo package is installed in ONE early layer
+# (System packages, below) so there is a single apt-get update for them, and the
+# volatile ARG-gated layers touch apt as little as possible (the AWS Toolkit
+# layer no longer runs apt at all). apt-get update and apt-get install always
+# live in the SAME RUN — the apt.install() macro cleans /var/lib/apt/lists at
+# the end of each layer, so a later install can never read a stale index.
+#
 # LOAD-BEARING relative order (do NOT reshuffle these blindly):
 #   * R package install MUST follow R install -> symlinks -> Rprofile.site.
+#   * "Posit Professional Drivers" installs rstudio-drivers from the pro repo;
+#     unixodbc/unixodbc-dev (its driver manager, and the libodbc.so.2 the R
+#     `odbc` goss check needs) come from the System packages layer, so they are
+#     present before the drivers land.
 #   * "AWS Toolkit" MUST follow "Positron Server" — it unpacks into the server's
 #     extensions/ dir, which the Positron Server extract creates.
+
+# --- System packages (apt) -------------------------------------------------
+# All plain Ubuntu-repo packages the toolchain needs, installed in a single
+# early layer so there is exactly one apt-get update for them and downstream
+# blocks (R, Pro Drivers, AWS Toolkit) do not each re-run apt. Grouped here:
+#   * libzmq3-dev, libuv1t64, libwebpmux3 — SYSTEM libs the P3M binary R
+#     packages link against (see the R block for the full rationale). P3M ships
+#     prebuilt .so files, and a missing lib is invisible at build time — it only
+#     fails at RUNTIME with "unable to load shared object". libuv1t64 backs `fs`
+#     (libuv.so.1) and libwebpmux3 backs `ragg` (libwebpmux.so.3); the `t64`
+#     suffix is Ubuntu 24.04 (noble)'s 64-bit time_t rename of libuv1. libuv.so.1
+#     DOES exist in /opt/conda/lib, but R lives outside conda at /opt/R and must
+#     not have conda's lib dir on its linker path (ABI conflicts) — install the
+#     real system package instead.
+#   * unixodbc, unixodbc-dev — the SYSTEM unixODBC driver manager the Posit
+#     Professional Drivers use (they do not bundle one). Also what provides
+#     libodbc.so.2 for the R `odbc` package's goss drift check.
+#   * unzip — used by the AWS Toolkit layer to unpack the VSIX (kept out of that
+#     volatile layer so a toolkit version bump never re-runs apt).
+RUN apt-get update -yqq && \
+    apt-get install -yqq --no-install-recommends \
+        libzmq3-dev \
+        libuv1t64 \
+        libwebpmux3 \
+        unixodbc \
+        unixodbc-dev \
+        unzip && \
+    apt-get clean -yqq && \
+    rm -rf /var/lib/apt/lists/*
 
 # --- R via r.j2 (rstd.io/r-install) + Posit Package Manager (binary CRAN) --
 # r.j2 does not use rig at all — its install() macro runs the same
@@ -55,22 +96,10 @@ USER root
 # bakery.yaml's R dependencyConstraint rather than floating to whatever
 # `rig add release` resolved to at build time.
 #
-# System libs for P3M binary packages: P3M ships prebuilt .so files linked against
-# SYSTEM libraries, and a missing one is invisible at build time — it only fails at
-# RUNTIME with "unable to load shared object", often deep inside an app. Two are
-# required and NOT in the base image: libuv1t64 for `fs` (libuv.so.1) and
-# libwebpmux3 for `ragg` (libwebpmux.so.3). Note the `t64` suffix — Ubuntu 24.04
-# (noble) renamed libuv1 in the 64-bit time_t transition. `libuv.so.1` DOES exist in
-# /opt/conda/lib, but R lives outside conda at /opt/R and must not have conda's lib
-# dir put on its linker path (ABI conflicts); install the real system package instead.
-RUN apt-get update -yqq && \
-    apt-get install -yqq --no-install-recommends \
-        libzmq3-dev \
-        libuv1t64 \
-        libwebpmux3 && \
-    apt-get clean -yqq && \
-    rm -rf /var/lib/apt/lists/* && \
-    RUN_UNATTENDED=1 R_VERSION=4.6.1 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
+# The SYSTEM libs the P3M binary packages link against (libzmq3-dev, libuv1t64,
+# libwebpmux3) are installed once in the "System packages (apt)" layer above,
+# not here, so this layer is a pure r-install with no apt of its own.
+RUN RUN_UNATTENDED=1 R_VERSION=4.6.1 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
     find . -type f -name '[rR]-4.6.1.*\.(deb|rpm)' -delete
 
 # Unlike rig, r-install does not manage a "current" R or a global shim — every
@@ -121,20 +150,22 @@ RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
 # Deliberately unpinned: always installs whatever the repo currently serves
 # as the rstudio-drivers package, so a rebuild always ships the latest
 # drivers rather than requiring a version bump. They use the SYSTEM unixODBC
-# driver manager (they do not bundle one), so install unixodbc/unixodbc-dev
-# alongside the rstudio-drivers package itself. The package installs under
-# /opt/rstudio-drivers/ and ships an odbcinst.ini.sample with absolute paths
-# already resolved — append it to /etc/odbcinst.ini to register every driver
-# (the Athena .so is /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so).
+# driver manager (they do not bundle one); unixodbc/unixodbc-dev are installed
+# in the "System packages (apt)" layer above, so only rstudio-drivers itself is
+# pulled from the pro repo here. The package installs under /opt/rstudio-drivers/
+# and ships an odbcinst.ini.sample with absolute paths already resolved — append
+# it to /etc/odbcinst.ini to register every driver (the Athena .so is
+# /opt/rstudio-drivers/athena/bin/lib/libathenaodbc_sb64.so).
 # Registering the repo and installing from it does not disturb conda.
 # Licensing is contractual only: the drivers do no runtime license check, and
 # shipping Positron (a licensed Posit product) covers the entitlement — so unlike
 # the Positron runtime license, there is nothing to fetch here.
+#
+# setup_posit_repo("pro") runs apt-get update as part of the repo setup script,
+# so apt.install() is called with update=False here to avoid a redundant second
+# update in the same layer.
 RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
-    apt-get update -yqq && \
     apt-get install -yqq --no-install-recommends \
-        unixodbc \
-        unixodbc-dev \
         rstudio-drivers && \
     cat /opt/rstudio-drivers/odbcinst.ini.sample >> /etc/odbcinst.ini && \
     apt-get clean -yqq && \
@@ -255,15 +286,14 @@ RUN mkdir -p /opt/positron-server \
 # MUST stay after the Positron Server block: it unpacks into the server's
 # extensions/ dir, which the Positron Server extract creates.
 #
+# unzip (used to unpack the VSIX) is installed in the "System packages (apt)"
+# layer near the top, so this volatile layer runs no apt at all — a toolkit
+# version bump re-runs only the curl download and unpack.
+#
 # AWS Toolkit VS Code extension version to download from the Open VSX registry
 # (Positron's extension gallery). Override with --build-arg AWS_TOOLKIT_VERSION=...
 ARG AWS_TOOLKIT_VERSION=4.6.1
-RUN apt-get update -yqq && \
-    apt-get install -yqq --no-install-recommends \
-        unzip && \
-    apt-get clean -yqq && \
-    rm -rf /var/lib/apt/lists/* && \
-    curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${AWS_TOOLKIT_VERSION}/file/amazonwebservices.aws-toolkit-vscode-${AWS_TOOLKIT_VERSION}.vsix" \
+RUN curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${AWS_TOOLKIT_VERSION}/file/amazonwebservices.aws-toolkit-vscode-${AWS_TOOLKIT_VERSION}.vsix" \
         -o /tmp/aws-toolkit.vsix \
     && rm -rf /tmp/aws-toolkit \
     && unzip -q /tmp/aws-toolkit.vsix "extension/*" -d /tmp/aws-toolkit \
