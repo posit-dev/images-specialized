@@ -209,6 +209,22 @@ RUN missing="$(find "$(R RHOME)/library" -name '*.so' -exec ldd {} \; 2>/dev/nul
 # minting never breaks. uv is installed into /opt/conda/bin (on PATH, and NOT under
 # the home dir that SageMaker mounts a volume over) so Positron's uv integration
 # works at runtime.
+#
+# NOT using Bakery's python.j2 macros here: every macro in that module (build_stage,
+# install_packages, pip_install_command, etc.) is built around a Bakery-managed,
+# uv-installed CPython under /opt/python/{version} with --break-system-packages
+# pip calls. This image's Python is the sagemaker-distribution base's OWN conda
+# `base` env at /opt/conda (there is no /opt/python here, and installing a second,
+# unmanaged Python would conflict with the base's tooling). Bakery also has no
+# conda.j2/mamba.j2 macro module to reach for instead — confirmed empirically
+# against the pinned base image and by inspecting every macro file Bakery ships.
+# So this stays a plain `pip install` into the existing conda env.
+#
+# `--no-cache-dir` (Bakery's install_packages() `clean` param does the equivalent
+# for its own pip calls) already keeps this from inflating the layer: verified
+# against the pinned base image that it leaves NEITHER a pip cache dir (no
+# ~/.cache/pip or /root/.cache/pip appears) NOR any leftover wheel/build artifacts
+# under /tmp, so there is nothing further to clean up after this RUN.
 RUN pip install --no-cache-dir \
         jupyter-server-proxy 'jupyter-positron-server>=0.0.5' \
         cryptography \
