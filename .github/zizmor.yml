@@ -6,3 +6,16 @@ rules:
         # are kept at @main intentionally.
         "posit-dev/images-shared/*": ref-pin
         "*": hash-pin
+  artipacked:
+    ignore:
+      # Existing checkouts precede artifact uploads or are followed by a
+      # push/PR creation step that needs the token. Keep the exemptions
+      # scoped to these exact locations so new instances still require review.
+      - positron-sagemaker.yml:56
+      - positron-sagemaker.yml:85
+      - positron-update.yml:38
+      - release.yml:32
+      - waml.yml:57
+      - waml.yml:85
+      - wgcw.yml:57
+      - wgcw.yml:86
