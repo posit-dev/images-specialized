@@ -1,6 +1,0 @@
-{
-  "positron.assistant.enable": true,
-  "positron.assistant.models.preference.amazonBedrock": "__POSITRON_BEDROCK_MODEL__",
-  "positron.assistant.provider.amazonBedrock.enable": true,
-  "remote.autoForwardPorts": false
-}

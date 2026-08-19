@@ -133,15 +133,3 @@ images:
             version: 1.10.18
           - dependency: R
             version: 4.6.1
-      - name: 2026.07.1-5
-        subpath: '2026.07'
-        os:
-          - name: Ubuntu 24.04
-            primary: true
-            platforms:
-              - linux/amd64
-        dependencies:
-          - dependency: quarto
-            version: 1.9.38
-          - dependency: R
-            version: 4.6.1
