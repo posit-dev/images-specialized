@@ -77,10 +77,8 @@ RUN mkdir -p /opt/positron-server \
 # payload is under extension/; we unpack just that subtree. The final ls -d
 # assertion fails the build loudly if a future Positron release changes the
 # built-in extensions layout (rather than silently dropping the extension).
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${AWS_TOOLKIT_VERSION}/file/amazonwebservices.aws-toolkit-vscode-${AWS_TOOLKIT_VERSION}.vsix" \
+RUN {{ apt.install(packages = ["unzip"]) | trim | indent(4) }} && \
+    curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${AWS_TOOLKIT_VERSION}/file/amazonwebservices.aws-toolkit-vscode-${AWS_TOOLKIT_VERSION}.vsix" \
         -o /tmp/aws-toolkit.vsix \
     && rm -rf /tmp/aws-toolkit \
     && unzip -q /tmp/aws-toolkit.vsix "extension/*" -d /tmp/aws-toolkit \
@@ -105,10 +103,8 @@ RUN apt-get update -qq \
 # (noble) renamed libuv1 in the 64-bit time_t transition. `libuv.so.1` DOES exist in
 # /opt/conda/lib, but R lives outside conda at /opt/R and must not have conda's lib
 # dir put on its linker path (ABI conflicts); install the real system package instead.
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends libzmq3-dev libuv1t64 libwebpmux3 \
-    && rm -rf /var/lib/apt/lists/* \
-    && {{ r.install(Dependencies.R.0) | indent(4) }}
+RUN {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3"]) | trim | indent(4) }} && \
+    {{ r.install(Dependencies.R.0) | indent(4) }}
 
 # Unlike rig, r-install does not manage a "current" R or a global shim — every
 # symlink onto PATH here is one we own and must keep in sync with
