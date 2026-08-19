@@ -6,10 +6,3 @@ rules:
         # are kept at @main intentionally.
         "posit-dev/images-shared/*": ref-pin
         "*": hash-pin
-  artipacked:
-    ignore:
-      # These checkouts are followed by a push/PR creation step that needs
-      # the persisted token. Keep the exemptions scoped to these exact
-      # locations so new instances still require review.
-      - positron-update.yml:38
-      - release.yml:32

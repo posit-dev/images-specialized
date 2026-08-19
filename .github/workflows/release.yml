@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Install bakery
         uses: "posit-dev/images-shared/setup-bakery@main"
@@ -172,14 +172,20 @@ jobs:
           OLD_DISPLAY: ${{ steps.capture.outputs.old_display }}
           OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
         run: |
+          # Authenticate individual git network commands via an inline
+          # header rather than persisting the token in .git/config (which
+          # would remain readable, e.g. by any later artifact upload, for
+          # the rest of the job).
+          AUTH_HEADER="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 -w0)"
+
           BRANCH="release/${DISPLAY_VERSION}"
-          git fetch origin "$BRANCH" 2>/dev/null || true
+          git -c http."https://github.com/".extraheader="$AUTH_HEADER" fetch origin "$BRANCH" 2>/dev/null || true
           git checkout -B "$BRANCH"
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "Release ${DISPLAY_VERSION}"
-          git push -u origin "$BRANCH" --force-with-lease
+          git -c http."https://github.com/".extraheader="$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Updates Workbench to version \`${VERSION}\`."
           BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml"
