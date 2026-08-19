@@ -1,13 +1,12 @@
-name: WGCW
+name: Positron SageMaker
 on:
   workflow_dispatch:
 
   schedule:
-    # Weekly rebuild, to pick up any upstream changes. Runs after
-    # Workbench production (03:15), Positron SageMaker (03:45), and
-    # session (03:45) so it picks up those rebuilds, and ahead of WAML
-    # (04:45) which takes much longer.
-    - cron: "15 4 * * 0" # At 04:15 on Sunday
+    # Weekly rebuild, to pick up any upstream changes. Runs ahead of WGCW
+    # (04:15) and WAML (04:45) so this image's build/test/push completes
+    # before the rest of the specialized-hour rebuilds begin.
+    - cron: "45 3 * * 0" # At 03:45 on Sunday
 
   push:
     branches:
@@ -65,7 +64,7 @@ jobs:
         env:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
-          IMAGE_NAME: "workbench-for-google-cloud-workstations"
+          IMAGE_NAME: "positron-sagemaker"
         run: |
           echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" "$IMAGE_NAME" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
 
@@ -99,18 +98,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Authenticate to GCP
-        id: gcp-auth
+      - name: Configure AWS credentials
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v6.2.3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-1
 
-      - name: Configure Docker for GCP Artifact Registry
+      - name: Login to Amazon ECR Public
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
-        run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev,us-docker.pkg.dev,europe-docker.pkg.dev,asia-docker.pkg.dev --quiet
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
+        with:
+          registry-type: public
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
@@ -122,15 +121,13 @@ jobs:
           IMAGE_VERSION: ${{ matrix.img.version }}
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
-          CACHE_REGISTRY: "us-central1-docker.pkg.dev/cloud-workstations-cache"
         run: |
           bakery build --load --pull \
             --retry 1 \
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS" \
-            --cache-registry "$CACHE_REGISTRY"
+            --matrix-versions "$MATRIX_VERSIONS"
 
       - name: Test
         env:
