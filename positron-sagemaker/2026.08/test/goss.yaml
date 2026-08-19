@@ -48,12 +48,12 @@ command:
     exec: "positron-server --version"
     exit-status: 0
     stdout:
-      - "/^Positron: 2026.07.1 build 5$/"
+      - "/^Positron: 2026.08.1 build 2$/"
   quarto-version:
     exec: "quarto --version"
     exit-status: 0
     stdout:
-      - "/^1.9.38$/"
+      - "/^1.10.18$/"
   r-version:
     exec: "R --version"
     exit-status: 0

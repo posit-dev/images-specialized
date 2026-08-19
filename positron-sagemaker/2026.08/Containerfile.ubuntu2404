@@ -29,7 +29,7 @@ FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.0-cpu
 # ROTATED at 2026.07.1 (2026.07.0's key differs). The signing key stored in Secrets
 # Manager must pair with the public key of the EXACT build shipped here — this
 # version pins the build whose OrchestratorPublicKey matches our signing key.
-ARG POSITRON_VERSION=2026.07.1-5
+ARG POSITRON_VERSION=2026.08.1-2
 
 # Default Bedrock model for the Posit Assistant (a US Claude cross-region
 # inference profile). Overridable at build time with --build-arg.
@@ -137,7 +137,7 @@ RUN /opt/R/4.6.1/bin/R --vanilla -e 'install.packages(c("IRkernel", "tidyverse",
 # repo verbatim (same version the tarball install pinned).
 RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
     apt-get install -yqq --no-install-recommends \
-        quarto=1.9.38 && \
+        quarto=1.10.18 && \
     apt-mark hold quarto && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/*
@@ -240,7 +240,7 @@ RUN for d in $(jupyter --paths --json \
 # launcher tile). Placed in /usr/local/etc/jupyter, which is on jupyter's config
 # search path, so it loads ADDITIVELY alongside the base image's own
 # /etc/jupyter/jupyter_server_config.py rather than replacing it.
-COPY positron-sagemaker/2026.07/jupyter_server_config.py /usr/local/etc/jupyter/jupyter_server_config.py
+COPY positron-sagemaker/2026.08/jupyter_server_config.py /usr/local/etc/jupyter/jupyter_server_config.py
 
 # The config patches jupyterlab_server's LabHandler so a DEEP-LINKED JupyterLab
 # page (/lab, /lab/tree/...) also redirects into Positron — SageMaker Unified
@@ -299,13 +299,13 @@ ENV JSP_POSITRON_LAUNCHER_DISABLED=1
 # AdminPolicyService.read() accepts ANY key (no policy-registration filter), so
 # arbitrary settings can be enforced this way. Grep the app log for
 # "AdminPolicyService" to confirm what actually reached Positron.
-COPY positron-sagemaker/2026.07/enforced-settings.json /etc/positron/enforced-settings.json
+COPY positron-sagemaker/2026.08/enforced-settings.json /etc/positron/enforced-settings.json
 RUN sed -i "s|__POSITRON_BEDROCK_MODEL__|${POSITRON_BEDROCK_MODEL}|" /etc/positron/enforced-settings.json
 
 # Baked default AWS profile (credential_process -> execution role). Copied to a
 # path outside the masked home; jupyter_server_config.py points AWS_CONFIG_FILE
 # here at startup only when the user has no ~/.aws/config of their own.
-COPY positron-sagemaker/2026.07/aws-config /etc/positron/aws-config
+COPY positron-sagemaker/2026.08/aws-config /etc/positron/aws-config
 
 USER $MAMBA_USER
 
