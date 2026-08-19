@@ -87,11 +87,15 @@ jobs:
           DISPLAY_VERSION="${LATEST_VERSION%%[+-]*}"
           EDITION="${DISPLAY_VERSION%.*}"
 
+          OLD_DISPLAY="${CURRENT_VERSION%%[+-]*}"
+          OLD_EDITION="${OLD_DISPLAY%.*}"
+
           {
             echo "update_needed=true"
             echo "current_version=$CURRENT_VERSION"
             echo "latest_version=$LATEST_VERSION"
             echo "edition=$EDITION"
+            echo "old_edition=$OLD_EDITION"
           } >> "$GITHUB_OUTPUT"
 
       # Resolves whatever :latest-cpu currently points at to a concrete,
@@ -157,15 +161,35 @@ jobs:
         run: |
           sed -i "s/${OLD_TAG}/${NEW_TAG}/g" positron-sagemaker/template/Containerfile.ubuntu2404.jinja2
 
-      - name: Create version
+      # Mirrors release.yml's version-replacement strategy: a same-edition
+      # bump patches the existing version in place (preserving the pinned
+      # quarto/R dependency resolution), while an edition bump creates a new
+      # version (letting dependencyConstraints re-resolve) and removes the
+      # old one, rather than leaving both versions checked in.
+      - name: Replace version
         if: steps.positron.outputs.update_needed == 'true'
         env:
           OLD_VERSION: ${{ steps.positron.outputs.current_version }}
           NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
           EDITION: ${{ steps.positron.outputs.edition }}
+          OLD_EDITION: ${{ steps.positron.outputs.old_edition }}
         run: |
-          bakery create version positron-sagemaker "$NEW_VERSION" --subpath "$EDITION" --mark-latest --force \
-            --diff-against "$OLD_VERSION" > "$RUNNER_TEMP/diff-positron-sagemaker.md"
+          if [ "$OLD_EDITION" = "$EDITION" ]; then
+            echo "Patching positron-sagemaker: $OLD_VERSION -> $NEW_VERSION"
+            bakery update version positron-sagemaker "$NEW_VERSION" --target-version "$OLD_VERSION"
+          else
+            echo "Replacing positron-sagemaker: $OLD_VERSION -> $NEW_VERSION (subpath=$EDITION)"
+            bakery create version positron-sagemaker "$NEW_VERSION" --subpath "$EDITION" --mark-latest
+            bakery remove version positron-sagemaker "$OLD_VERSION"
+          fi
+
+      # Computed from the working tree rather than `bakery create version
+      # --diff-against`, since the same-edition patch path above overwrites
+      # the old version in place and leaves no second version to diff against.
+      - name: Capture rendered diff
+        if: steps.positron.outputs.update_needed == 'true'
+        run: |
+          git diff -- positron-sagemaker > "$RUNNER_TEMP/diff-positron-sagemaker.md" || true
 
       - name: Create pull request
         if: steps.positron.outputs.update_needed == 'true'
