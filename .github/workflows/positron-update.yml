@@ -37,7 +37,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Install bakery
         uses: "posit-dev/images-shared/setup-bakery@main"
@@ -200,13 +200,19 @@ jobs:
           OLD_BASE_TAG: ${{ steps.base_image.outputs.current_base_tag }}
           NEW_BASE_TAG: ${{ steps.base_image.outputs.resolved_base_tag }}
         run: |
+          # Authenticate individual git network commands via an inline
+          # header rather than persisting the token in .git/config (which
+          # would remain readable, e.g. by any later artifact upload, for
+          # the rest of the job).
+          AUTH_HEADER="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 -w0)"
+
           BRANCH="positron-update-${NEW_VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
           git add -A
           git commit -m "Bump Positron to ${NEW_VERSION}"
-          git push -u origin "$BRANCH" --force-with-lease
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Bumps Positron on SageMaker from \`${OLD_VERSION}\` to \`${NEW_VERSION}\`."
           if [ "$OLD_BASE_TAG" != "$NEW_BASE_TAG" ]; then
