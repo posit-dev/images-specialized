@@ -64,6 +64,36 @@ command:
     stdout:
       - "/^R version 4.6.1 /"
 
+  # --- Verify R packages' system libraries -----------------------------------
+  # P3M ships R packages as PREBUILT .so files linked against SYSTEM libraries. A
+  # missing one is invisible at build time and only fails at RUNTIME with
+  # "unable to load shared object" -- often deep inside an app, far from the
+  # cause (e.g. bslib::bs_theme_dependencies pulls in `fs`, so a themed Shiny
+  # app died on libuv.so.1 while nothing referenced `fs` directly). This
+  # asserts every installed package's .so resolves, so such a gap fails the
+  # image test instead of surfacing at runtime.
+  #
+  # This runs against the fully-built image, so it's naturally after the Pro
+  # Drivers install (the `odbc` package needs libodbc.so.2, which unixodbc
+  # provides and which the drivers RUN block installs).
+  # libR.so is excluded -- ldd cannot resolve it outside a running R session.
+  #
+  # The libR exclusion is done in awk, NOT `| grep -v '^libR'`, on purpose:
+  # under `set -o pipefail` grep exits 1 when it selects no lines -- which is
+  # exactly the healthy case here (nothing missing) -- and would false-fail
+  # the check. awk exits 0 whether or not it prints, so it is pipefail-safe.
+  r-packages-system-libraries-resolve:
+    exec: |
+      missing="$(find "$(R RHOME)/library" -name '*.so' -exec ldd {} \; 2>/dev/null \
+              | awk '/not found/ && $1 !~ /^libR/ {print $1}' | sort -u | tr '\n' ' ')"
+      if [ -n "$missing" ]; then
+        echo "ERROR: R packages have unresolved system libs: $missing" >&2
+        echo "Add the providing apt package(s) to a RUN block in the Containerfile." >&2
+        exit 1
+      fi
+      echo "OK: all R package shared libraries resolve"
+    exit-status: 0
+
   # --- No Jupyter kernel exists (Positron-only launcher) ---------------------
   # Mirrors the build-time assertion in the Containerfile: every kernels/ dir
   # under Jupyter's data paths was removed, and the synthetic "python3" kernel
