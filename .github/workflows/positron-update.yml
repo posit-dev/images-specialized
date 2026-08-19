@@ -212,7 +212,7 @@ jobs:
           git checkout -B "$BRANCH"
           git add -A
           git commit -m "Bump Positron to ${NEW_VERSION}"
-          git -c http."https://github.com/".extraheader="$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Bumps Positron on SageMaker from \`${OLD_VERSION}\` to \`${NEW_VERSION}\`."
           if [ "$OLD_BASE_TAG" != "$NEW_BASE_TAG" ]; then

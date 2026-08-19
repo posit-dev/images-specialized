@@ -179,13 +179,13 @@ jobs:
           AUTH_HEADER="AUTHORIZATION: basic $(printf '%s' "x-access-token:${GH_TOKEN}" | base64 -w0)"
 
           BRANCH="release/${DISPLAY_VERSION}"
-          git -c http."https://github.com/".extraheader="$AUTH_HEADER" fetch origin "$BRANCH" 2>/dev/null || true
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" fetch origin "$BRANCH" 2>/dev/null || true
           git checkout -B "$BRANCH"
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "Release ${DISPLAY_VERSION}"
-          git -c http."https://github.com/".extraheader="$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Updates Workbench to version \`${VERSION}\`."
           BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml"
