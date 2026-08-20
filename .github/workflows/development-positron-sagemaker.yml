@@ -18,11 +18,15 @@ name: Development - Positron SageMaker
 # devVersions comment in bakery.yaml.
 #
 # Where the images go: bakery.yaml's devVersions block sets overrideRegistries,
-# so dev builds are tagged ONLY for ghcr.io/posit-dev/positron-sagemaker-preview.
-# They can never reach the customer-facing public.ecr.aws repository, which is
-# why this workflow needs no AWS credentials (the sagemaker-distribution base
-# image pulls anonymously from ECR Public, exactly as it does in the production
-# workflow's Build step).
+# so dev builds are tagged ONLY for ghcr.io/posit-dev/positron-sagemaker-preview
+# and the internal 935931255537.dkr.ecr.us-east-1.amazonaws.com/positron-sagemaker
+# repo. They can never reach the customer-facing public.ecr.aws repository. The
+# sagemaker-distribution base image still pulls anonymously from ECR Public,
+# exactly as it does in the production workflow's Build step, but the Push step
+# now assumes the `development` environment's AWS_ROLE to authenticate against
+# the private ECR repo -- a separate role/account from the `production`
+# environment's AWS_ROLE used by the Positron SageMaker workflow, which only
+# has push access to the public ECR repository.
 on:
   workflow_dispatch:
     inputs:
@@ -159,6 +163,11 @@ jobs:
       id-token: write
     needs: matrix
     runs-on: ubuntu-latest-4x
+    # Scopes the AWS_ROLE secret to the development-only role that can push to
+    # the internal ECR repo. This is a distinct role/account from the
+    # `production` environment's AWS_ROLE (see positron-sagemaker.yml), which
+    # can only push to the customer-facing public ECR repository.
+    environment: development
     strategy:
       fail-fast: false
       matrix:
@@ -192,6 +201,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
