@@ -260,11 +260,25 @@ ENV JSP_POSITRON_LAUNCHER_DISABLED=1
 # version pins the build whose OrchestratorPublicKey matches our signing key.
 ARG POSITRON_VERSION=2026.08.1-2
 
+# CDN channel the Positron Server tarball is pulled from: "releases" for a
+# production build, "dailies" for a development build. Bakery renders the value
+# from the version's `values` map (bakery.yaml devVersions sets
+# POSITRON_CHANNEL: dailies), defaulting to "releases" for pinned versions.
+#
+# NOTE: this is rendered at TEMPLATE time rather than injected as a build arg.
+# Bakery only forwards `values` to --build-arg for MATRIX versions
+# (ImageTarget.build_args is gated on isMatrixVersion), and this image has no
+# matrix -- its dev versions render into an ephemeral .dev-<version>/ directory
+# instead. Jinja rendering of `values` is unconditional, so baking the channel
+# into the rendered ARG default is what actually works here. Still an ARG so a
+# local build can override it with --build-arg POSITRON_CHANNEL=dailies.
+ARG POSITRON_CHANNEL=releases
+
 # Download from the Posit CDN and extract with --strip-components=1 so the
 # binary lands at /opt/positron-server/bin/positron-server (the layout
 # jupyter-positron-server probes via which_positron_server()).
 RUN mkdir -p /opt/positron-server \
-    && curl -fsSL "https://cdn.posit.co/positron/releases/server/x86_64/positron-server-linux-x64-${POSITRON_VERSION}.tar.gz" \
+    && curl -fsSL "https://cdn.posit.co/positron/${POSITRON_CHANNEL}/server/x86_64/positron-server-linux-x64-${POSITRON_VERSION}.tar.gz" \
         -o /tmp/positron.tar.gz \
     && tar -xzf /tmp/positron.tar.gz -C /opt/positron-server --strip-components=1 \
     && rm /tmp/positron.tar.gz \
