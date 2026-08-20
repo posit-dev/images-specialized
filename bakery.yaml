@@ -123,6 +123,22 @@ images:
       - dependency: R
         constraint:
           latest: true
+    devVersions:
+      - sourceType: dependency
+        dependency: positron
+        prerelease: true
+        channel: daily
+        values:
+          POSITRON_CHANNEL: dailies
+        os:
+          - name: Ubuntu 24.04
+            primary: true
+            platforms:
+              - linux/amd64
+        overrideRegistries:
+          - host: "ghcr.io"
+            namespace: "posit-dev"
+            repository: "positron-sagemaker-preview"
     versions:
       - name: 2026.08.1-2
         subpath: '2026.08'
