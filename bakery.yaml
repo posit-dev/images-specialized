@@ -139,6 +139,12 @@ images:
           - host: "ghcr.io"
             namespace: "posit-dev"
             repository: "positron-sagemaker-preview"
+          # Internal-only ECR repo used to validate the image against SageMaker
+          # Studio before it's promoted anywhere customer-facing. Requires the
+          # `development` environment's AWS_ROLE secret to push (see
+          # development-positron-sagemaker.yml).
+          - host: "935931255537.dkr.ecr.us-east-1.amazonaws.com"
+            repository: "positron-sagemaker"
     versions:
       - name: 2026.08.1-2
         subpath: '2026.08'

@@ -78,6 +78,12 @@ jobs:
       id-token: write
     needs: matrix
     runs-on: ubuntu-latest-4x
+    # Scopes the AWS_ROLE secret to the production-only role that can push to
+    # the customer-facing public ECR repository. This is a distinct
+    # role/account from the `development` environment's AWS_ROLE (see
+    # development-positron-sagemaker.yml), which can only push to the
+    # internal, non-customer-facing ECR repo used for preview builds.
+    environment: production
     strategy:
       fail-fast: false
       matrix:
