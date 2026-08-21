@@ -516,8 +516,39 @@ def _mint_license_token(connection_token, issuer="", licensee=""):
 # license var into that leading `/usr/bin/env` prefix. The JSON braces are
 # doubled so jupyter-server-proxy's str.format() templating leaves them intact
 # (mirrors jupyter-positron-server's own hub-minting command builder).
+# --- AWS License Manager (preferred, when the client is present) -----------
+# positron-server 2026.08+ accepts POSITRON_LICENSE_MANAGER_PATH: it runs the
+# named binary, treats that client's verdict as the licensing decision, and
+# ignores the key sources entirely (positron-dev/positron#15538). That is the
+# target mechanism for this image — the entitlement lives in AWS License
+# Manager and is checked out per session under the execution role, so there is
+# no signing key or .lic to distribute.
+#
+# The variable is only exported when the client is actually installed: a
+# POSITRON_LICENSE_MANAGER_PATH pointing at a missing binary makes
+# positron-server fail immediately rather than fall back. The Containerfile
+# installs the client only when built with LICENSE_MANAGER_CLIENT_URL set, so
+# an image built without it keeps the signing-key path below unchanged.
+_LM_CLIENT_PATH = "/usr/lib/positron-server/bin/license-manager-aws-sagemaker"
+_LM_CLIENT_PRESENT = _os.path.isfile(_LM_CLIENT_PATH) and _os.access(_LM_CLIENT_PATH, _os.X_OK)
+
 _orig_command = cfg.get("command")
-if isinstance(_orig_command, list) and _orig_command:
+if _LM_CLIENT_PRESENT and isinstance(_orig_command, list) and _orig_command:
+    logger.info(
+        "Positron license: using AWS License Manager via "
+        f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}"
+    )
+    _cmd = list(_orig_command)
+    _lm_vars = [
+        f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}",
+        f"LM_LOG_FILE={_os.environ.get('LM_LOG_FILE', '/tmp/sagemaker-lm.log')}",
+    ]
+    if _cmd[0] == "/usr/bin/env":
+        cfg["command"] = _cmd[:1] + _lm_vars + _cmd[1:]
+    else:
+        cfg["command"] = ["/usr/bin/env"] + _lm_vars + _cmd
+
+elif isinstance(_orig_command, list) and _orig_command:
 
     def _positron_command_with_license(port):
         if _signing_key is None:
