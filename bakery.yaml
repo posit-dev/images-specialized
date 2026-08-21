@@ -159,3 +159,55 @@ images:
             version: 1.10.18
           - dependency: R
             version: 4.6.1
+  - name: session-complete
+    displayName: "Posit Workbench Session Complete"
+    description: "A Posit Workbench session image with a full Workbench
+      installation layered on, so the session components ship in the image and
+      sessions run without a workbench-session-init init container alongside
+      them. Mirrors the Workbench installation used by the r-session-complete
+      image on a workbench-session base."
+    documentationUrl: "https://docs.posit.co/ide/server-pro/integration/kubernetes.html"
+    variants:
+      - name: Standard
+        extension: std
+        tagDisplayName: std
+        primary: true
+      - name: Minimal
+        extension: min
+        tagDisplayName: min
+    # No `options` here:
+    #   * goss -- unlike the other images in this repository, a session image
+    #     starts no long-running service of its own (the Job Launcher execs a
+    #     session per request), so there is nothing to start and nothing to wait
+    #     for. dgoss runs the default `sleep infinity` and the suite is purely
+    #     structural.
+    #   * soci -- deliberately not enabled yet. This image is large enough that
+    #     lazy layer pulls would help (the upstream workbench-session and
+    #     workbench-session-init images both enable it), so it is worth
+    #     revisiting, but it is left off until the image itself is settled.
+    versions:
+      # The version is the WORKBENCH release, used verbatim as the apt version
+      # pin for the rstudio-server package in scripts/install_workbench.sh.
+      # It is not an R/Python matrix coordinate -- those come from whichever
+      # workbench-session base build the OS-qualified tag resolves to.
+      - name: 2026.08.1+195.pro1
+        subpath: '2026.08'
+        latest: true
+        os:
+          # Ubuntu 26.04 only. rstudio-server 2026.08.1+195.pro1 is published
+          # for amd64 in the Posit pro apt repo's `resolute` suite, and
+          # workbench-session publishes ubuntu-26.04-std / ubuntu-26.04-min
+          # base tags.
+          #
+          # amd64 only, and not merely as a scoping choice: the rstudio-server
+          # postinst hardcodes the multiarch triplet when it repoints the NSS
+          # module symlink
+          #   ln -sf /usr/lib/rstudio-server/bin/libnss_pwb.so \
+          #          /usr/lib/x86_64-linux-gnu/libnss_pwb.so.2
+          # so an arm64 build would silently leave libnss_pwb.so.2 pointing at
+          # the base image's zero-byte placeholder. Revisit if that postinst
+          # stops hardcoding x86_64-linux-gnu.
+          - name: Ubuntu 26.04
+            primary: true
+            platforms:
+              - linux/amd64
