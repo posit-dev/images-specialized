@@ -69,9 +69,15 @@ jobs:
         env:
           VERSION: ${{ steps.parse.outputs.version }}
         run: |
-          # Both managed images stay in lockstep, so reading from one is
-          # authoritative. Capturing here, before any mutation, avoids stale
-          # reads later in the loop.
+          # All images in the IMAGES list below stay in lockstep on the same
+          # Workbench version, so reading from one is authoritative. Capturing
+          # here, before any mutation, avoids stale reads later in the loop.
+          #
+          # Any image added to IMAGES must already be on this same version, and
+          # any Workbench-pinning image in this repository must be added to
+          # IMAGES: the README rewrite below is repo-wide, so an image left out
+          # of IMAGES still gets its README rewritten and ends up advertising a
+          # version bakery.yaml never moved it to.
           OLD_VERSION=$(bakery get version workbench-for-google-cloud-workstations 2>/dev/null || true)
 
           if [ -z "$OLD_VERSION" ]; then
@@ -115,7 +121,7 @@ jobs:
           OLD_VERSION: ${{ steps.capture.outputs.old_version }}
           OLD_EDITION: ${{ steps.capture.outputs.old_edition }}
         run: |
-          IMAGES="workbench-for-google-cloud-workstations workbench-for-microsoft-azure-ml"
+          IMAGES="workbench-for-google-cloud-workstations workbench-for-microsoft-azure-ml session-complete"
 
           for IMAGE in $IMAGES; do
             if [ "$OLD_EDITION" = "$EDITION" ]; then
@@ -188,7 +194,7 @@ jobs:
           git -c "http.https://github.com/.extraheader=$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Updates Workbench to version \`${VERSION}\`."
-          BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml"
+          BODY+=$'\n\n'"**Images:** workbench-for-google-cloud-workstations, workbench-for-microsoft-azure-ml, session-complete"
           BODY+=$'\n'"**Replaces:** \`${OLD_VERSION}\` → \`${VERSION}\`"
           if [ "$OLD_EDITION" != "$EDITION" ]; then
             BODY+=$'\n'"**Edition bump:** \`${OLD_EDITION}\` → \`${EDITION}\` (dependencies re-resolved)"

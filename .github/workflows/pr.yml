@@ -50,6 +50,11 @@ jobs:
       dev-versions: "exclude"
       matrix-versions: "exclude"
       cache: false  # Caching silently fails on these images as they are above the GHCR size limit.
+      # This workflow builds every image in bakery.yaml, so it is sized for the
+      # largest one. session-complete is ~15 GB (std) / ~13 GB (min) built, on
+      # top of a ~7 GB base pull, and the job builds with --load before testing,
+      # so it needs materially more disk than the other images here.
+      amd64-builder: "ubuntu-latest-8x"
 
   zizmor:
     name: Zizmor
