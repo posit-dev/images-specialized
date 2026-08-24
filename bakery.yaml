@@ -114,7 +114,7 @@ images:
     documentationUrl: https://github.com/posit-dev/positron-sagemaker
     extraRegistries:
       - host: "public.ecr.aws"
-        namespace: "m0i8p2s7"
+        namespace: "posit"
         repository: "positron-sagemaker"
     dependencyConstraints:
       - dependency: quarto
