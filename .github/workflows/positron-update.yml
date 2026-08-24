@@ -250,7 +250,9 @@ jobs:
             echo "$MARKER"
             echo "## Rendered file changes"
             echo
+            echo '```diff'
             cat "$DIFF_FILE"
+            echo '```'
           } > "$BODY_FILE"
 
           PR_NUMBER=$(gh pr view "$BRANCH" --json number -q .number)
