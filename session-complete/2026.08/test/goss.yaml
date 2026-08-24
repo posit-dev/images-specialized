@@ -176,6 +176,17 @@ file:
   /var/lib/rstudio-server/rstudio.sqlite:
     exists: false
 
+  # --- The Ubuntu base's pebble service manager is gone ------------------
+  # ubuntu:26.04 ships Canonical's pebble (a ~10MB standalone binary at
+  # /usr/bin/pebble, NOT a dpkg package) and workbench-session inherits it.
+  # Nothing in a session image uses it, so the Containerfile deletes the binary
+  # and its /var/lib/pebble state tree. See the pebble-service-manager-removed
+  # command check for the PATH-level guard.
+  /usr/bin/pebble:
+    exists: false
+  /var/lib/pebble:
+    exists: false
+
 command:
   # --- The NSS symlink points at the DEB's file, not the placeholder -------
   # This is the integration seam between the base image and the deb, and it is
@@ -408,4 +419,19 @@ command:
       [ -d /opt/.TinyTeX ] || { echo "ERROR: /opt/.TinyTeX missing" >&2; rc=1; }
       if [ "$rc" -eq 0 ]; then echo "OK: base image runtimes intact"; fi
       exit "$rc"
+    exit-status: 0
+
+  # --- The Ubuntu base's pebble service manager was removed --------------
+  # The file checks above assert the two known paths are gone; this asserts the
+  # stronger property that pebble is not resolvable on PATH at all, so a future
+  # base image that relocates the binary elsewhere on PATH (rather than leaving
+  # it at /usr/bin/pebble) is still caught. pebble is not dpkg-tracked, so this
+  # is a path/file assertion rather than a `package` one.
+  pebble-service-manager-removed:
+    exec: |
+      if command -v pebble >/dev/null 2>&1; then
+        echo "ERROR: pebble still present at $(command -v pebble)" >&2
+        exit 1
+      fi
+      echo "OK: pebble not on PATH"
     exit-status: 0
