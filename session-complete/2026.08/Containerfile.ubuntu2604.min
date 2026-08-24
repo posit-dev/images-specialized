@@ -123,3 +123,28 @@ RUN codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")" && \
     rmdir "${placeholder_dir}" 2>/dev/null || true && \
     ldconfig && \
     test -s /usr/lib/x86_64-linux-gnu/libnss_pwb.so.2
+
+### Remove the pebble service manager inherited from the Ubuntu base ###
+# ubuntu:26.04 ships Canonical's pebble service manager as a standalone ~10MB
+# binary at /usr/bin/pebble (with an empty state tree at /var/lib/pebble), and
+# workbench-session inherits both unchanged. It is NOT a dpkg-tracked package
+# -- nothing declares a Depends on it and `dpkg -S /usr/bin/pebble` finds no
+# owner -- so it cannot be removed with `apt-get remove`; the files are deleted
+# directly. Nothing in this image uses it: a session container's process model
+# is the Job Launcher exec'ing a session per request, not a pebble-supervised
+# service tree, and neither the base nor this image sets pebble as an
+# entrypoint or references it from /etc (verified on both the -min and -std
+# bases). Removing it drops dead weight and an unused root-owned service
+# manager from the image's attack surface.
+#
+# `rm -f`/`rm -rf` so this is a no-op (not an error) if a future base image
+# stops shipping pebble, and an explicit post-check so that if a future base
+# instead RELOCATES pebble or starts actually using it, `command -v pebble`
+# still resolving here fails the build -- a signal to revisit this block rather
+# than silently shipping the binary again.
+RUN rm -f /usr/bin/pebble && \
+    rm -rf /var/lib/pebble && \
+    if command -v pebble >/dev/null 2>&1; then \
+        echo "ERROR: pebble still on PATH at $(command -v pebble) after removal" >&2; \
+        exit 1; \
+    fi
