@@ -165,6 +165,12 @@ except FileNotFoundError:
 # Positron license: check real entitlement, then mint a signed license TOKEN at
 # each positron-server launch.
 #
+# THIS IS THE FALLBACK PATH. Images built with the AWS License Manager client
+# (the default — see LICENSE_MANAGER_CLIENT_VERSION in the Containerfile) take
+# their licensing verdict from that client instead, and skip every Secrets
+# Manager lookup described below. Everything from here down to the LM branch
+# applies only to a build that deliberately opts out of the client.
+#
 # positron-server >= 2026.07.0 hardened licensing: it no longer accepts a raw
 # `.lic` file as its OWN input — it requires a short-lived RSA-signed JSON token
 # bound to the server's --connection-token, and it FAILS CLOSED (the process
@@ -205,10 +211,10 @@ except FileNotFoundError:
 #     independently verify them, so getting them right matters for OUR gate, not
 #     positron-server's.
 #
-# NOTE ON SECRECY: unlike the signing key's original intent, this does NOT hide
-# the license file from the end user. SageMaker's single-container topology
-# means the user already holds the execution role and can fetch either secret
-# directly — that boundary was already gone before this change. What this DOES
+# NOTE ON SECRECY (fallback path only): unlike the signing key's original
+# intent, this does NOT hide the license file from the end user. SageMaker's
+# single-container topology means the user already holds the execution role and
+# can fetch either secret directly — that boundary was already gone before this change. What this DOES
 # do is require a genuine, currently-activated license for minting to happen at
 # all: without one, no token is issued and positron-server fails closed exactly
 # as it does today for a missing signing key.
@@ -224,6 +230,27 @@ _POSITRON_SERVER_DIR = "/opt/positron-server"
 _POSITRON_ACTIVATION_DIR = f"{_POSITRON_SERVER_DIR}/resources/activation/linux/x86_64"
 _LICENSE_MANAGER_PATH = f"{_POSITRON_ACTIVATION_DIR}/license-manager"
 _LICENSE_FILE_PATH = f"{_POSITRON_ACTIVATION_DIR}/license.lic"
+
+# --- AWS License Manager (preferred, when the client is present) -----------
+# positron-server 2026.08+ accepts POSITRON_LICENSE_MANAGER_PATH: it runs the
+# named binary, treats that client's verdict as the licensing decision, and
+# ignores the key sources entirely (positron-dev/positron#15538). That is the
+# mechanism for this image — the entitlement lives in AWS License Manager and
+# is checked out per session under the execution role, so there is no signing
+# key and no .lic to distribute.
+#
+# The variable is only exported when the client is actually installed: a
+# POSITRON_LICENSE_MANAGER_PATH pointing at a missing binary makes
+# positron-server fail immediately rather than fall back. The Containerfile
+# installs the client by default (LICENSE_MANAGER_CLIENT_VERSION), so a build
+# that deliberately empties that ARG is the only one that still takes the
+# signing-key path below.
+#
+# Resolved HERE, before the Secrets Manager bootstrap, because that bootstrap is
+# skipped whenever this is true (see the two blocks below). Only depends on _os,
+# so it is safe this early.
+_LM_CLIENT_PATH = "/usr/lib/positron-server/bin/license-manager-aws-sagemaker"
+_LM_CLIENT_PRESENT = _os.path.isfile(_LM_CLIENT_PATH) and _os.access(_LM_CLIENT_PATH, _os.X_OK)
 
 
 def _load_signing_key_pem():
@@ -298,22 +325,34 @@ def _load_license_content():
 # `install`s an admin-supplied .lic to the same path — we just source it from
 # Secrets Manager instead of a local file). Failure here isn't fatal by itself;
 # it surfaces as an entitlement-check failure below, which blocks minting.
-try:
-    _os.makedirs(_POSITRON_ACTIVATION_DIR, exist_ok=True)
-    with open(_LICENSE_FILE_PATH, "w") as _fh:
-        _fh.write(_load_license_content())
-    _os.chmod(_LICENSE_FILE_PATH, 0o600)
-    logger.info(f"Positron license: license file installed to {_LICENSE_FILE_PATH}")
-except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
-    logger.error(
-        f"Positron license: could NOT install license file "
-        f"({type(_exc).__name__}: {_exc}). The entitlement check below will "
-        f"fail and positron-server will not be licensed — store the license in "
-        f"Secrets Manager (POSITRON_LICENSE_SECRET_ID, default "
-        f"'positron-license') and grant the execution role "
-        f"secretsmanager:GetSecretValue, or set POSITRON_LICENSE_FILE for "
-        f"local runs"
+#
+# SKIPPED WHOLESALE when the License Manager client is present. That build never
+# reads this file — the licensing verdict comes from the client — and an LM
+# deployment has no 'positron-license' secret to read, so attempting the lookup
+# can only fail and log a licensing ERROR that is alarming, unactionable, and
+# untrue of a correctly-licensed image.
+if _LM_CLIENT_PRESENT:
+    logger.info(
+        "Positron license: AWS License Manager client present; skipping the "
+        "Secrets Manager license-file install"
     )
+else:
+    try:
+        _os.makedirs(_POSITRON_ACTIVATION_DIR, exist_ok=True)
+        with open(_LICENSE_FILE_PATH, "w") as _fh:
+            _fh.write(_load_license_content())
+        _os.chmod(_LICENSE_FILE_PATH, 0o600)
+        logger.info(f"Positron license: license file installed to {_LICENSE_FILE_PATH}")
+    except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
+        logger.error(
+            f"Positron license: could NOT install license file "
+            f"({type(_exc).__name__}: {_exc}). The entitlement check below will "
+            f"fail and positron-server will not be licensed — store the license in "
+            f"Secrets Manager (POSITRON_LICENSE_SECRET_ID, default "
+            f"'positron-license') and grant the execution role "
+            f"secretsmanager:GetSecretValue, or set POSITRON_LICENSE_FILE for "
+            f"local runs"
+        )
 
 
 def _check_entitlement():
@@ -447,36 +486,48 @@ def _license_error_command(port):
 
 
 # Load the signing key once (the key is stable; only the token is minted per spawn).
+#
+# SKIPPED WHOLESALE when the License Manager client is present, for the same
+# reason as the license-file install above: an LM deployment distributes no
+# signing key, so the Secrets Manager lookup can only fail and log a misleading
+# licensing ERROR. _signing_key stays None, which is correct — the LM branch
+# below never mints a token.
 _signing_key = None
 _sign_padding = None
 _sign_hash = None
-try:
-    from cryptography.hazmat.primitives import hashes as _c_hashes  # noqa: E402
-    from cryptography.hazmat.primitives import serialization as _c_serialization
-    from cryptography.hazmat.primitives.asymmetric import padding as _c_padding
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey as _RSAKey
-
-    _signing_key = _c_serialization.load_pem_private_key(
-        _load_signing_key_pem().encode(), password=None
-    )
-    if not isinstance(_signing_key, _RSAKey):
-        raise TypeError("signing key is not an RSA private key")
-    _sign_padding = _c_padding.PKCS1v15()
-    _sign_hash = _c_hashes.SHA256()
+if _LM_CLIENT_PRESENT:
     logger.info(
-        "Positron license: RSA signing key loaded; minting a signed token per launch"
+        "Positron license: AWS License Manager client present; skipping the "
+        "Secrets Manager signing-key load"
     )
-except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
-    _signing_key = None
-    logger.error(
-        f"Positron license: could NOT load signing key "
-        f"({type(_exc).__name__}: {_exc}). positron-server requires a signed "
-        f"license token and will fail to start without one — store the key in "
-        f"Secrets Manager (POSITRON_SIGNING_KEY_SECRET_ID, default "
-        f"'positron-signing-key') and grant the execution role "
-        f"secretsmanager:GetSecretValue, or set POSITRON_SIGNING_KEY_FILE for "
-        f"local runs"
-    )
+else:
+    try:
+        from cryptography.hazmat.primitives import hashes as _c_hashes  # noqa: E402
+        from cryptography.hazmat.primitives import serialization as _c_serialization
+        from cryptography.hazmat.primitives.asymmetric import padding as _c_padding
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey as _RSAKey
+
+        _signing_key = _c_serialization.load_pem_private_key(
+            _load_signing_key_pem().encode(), password=None
+        )
+        if not isinstance(_signing_key, _RSAKey):
+            raise TypeError("signing key is not an RSA private key")
+        _sign_padding = _c_padding.PKCS1v15()
+        _sign_hash = _c_hashes.SHA256()
+        logger.info(
+            "Positron license: RSA signing key loaded; minting a signed token per launch"
+        )
+    except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
+        _signing_key = None
+        logger.error(
+            f"Positron license: could NOT load signing key "
+            f"({type(_exc).__name__}: {_exc}). positron-server requires a signed "
+            f"license token and will fail to start without one — store the key in "
+            f"Secrets Manager (POSITRON_SIGNING_KEY_SECRET_ID, default "
+            f"'positron-signing-key') and grant the execution role "
+            f"secretsmanager:GetSecretValue, or set POSITRON_SIGNING_KEY_FILE for "
+            f"local runs"
+        )
 
 
 def _mint_license_token(connection_token, issuer="", licensee=""):
@@ -516,22 +567,10 @@ def _mint_license_token(connection_token, issuer="", licensee=""):
 # license var into that leading `/usr/bin/env` prefix. The JSON braces are
 # doubled so jupyter-server-proxy's str.format() templating leaves them intact
 # (mirrors jupyter-positron-server's own hub-minting command builder).
-# --- AWS License Manager (preferred, when the client is present) -----------
-# positron-server 2026.08+ accepts POSITRON_LICENSE_MANAGER_PATH: it runs the
-# named binary, treats that client's verdict as the licensing decision, and
-# ignores the key sources entirely (positron-dev/positron#15538). That is the
-# target mechanism for this image — the entitlement lives in AWS License
-# Manager and is checked out per session under the execution role, so there is
-# no signing key or .lic to distribute.
-#
-# The variable is only exported when the client is actually installed: a
-# POSITRON_LICENSE_MANAGER_PATH pointing at a missing binary makes
-# positron-server fail immediately rather than fall back. The Containerfile
-# installs the client only when built with LICENSE_MANAGER_CLIENT_URL set, so
-# an image built without it keeps the signing-key path below unchanged.
-_LM_CLIENT_PATH = "/usr/lib/positron-server/bin/license-manager-aws-sagemaker"
-_LM_CLIENT_PRESENT = _os.path.isfile(_LM_CLIENT_PATH) and _os.access(_LM_CLIENT_PATH, _os.X_OK)
-
+# Splice the licensing environment into positron-server's launch command.
+# _LM_CLIENT_PATH / _LM_CLIENT_PRESENT are resolved much earlier (just above the
+# Secrets Manager bootstrap), since that bootstrap is skipped when the client is
+# present.
 _orig_command = cfg.get("command")
 if _LM_CLIENT_PRESENT and isinstance(_orig_command, list) and _orig_command:
     logger.info(

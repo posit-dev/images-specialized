@@ -3,10 +3,11 @@
 # Positron on Amazon SageMaker — a custom JupyterLab image that runs Posit's
 # Positron IDE inside SageMaker Studio, on the sagemaker-distribution base.
 # Adds Positron Server, R + Python runtimes (with Shiny + uv), and a
-# Bedrock-backed Posit Assistant. Licensing is applied at runtime: AWS License
-# Manager when the licensing client is installed (see
-# LICENSE_MANAGER_CLIENT_VERSION), otherwise AWS Secrets Manager. No license is
-# baked into the image. See README.md.
+# Bedrock-backed Posit Assistant. Licensing is applied at runtime by AWS License
+# Manager, via the licensing client installed by default (see
+# LICENSE_MANAGER_CLIENT_VERSION). Only a build that deliberately opts out of
+# that client falls back to AWS Secrets Manager. No license is baked into the
+# image. See README.md.
 #
 # Positron Server is downloaded from the Posit CDN at build time, so no local
 # tarball is required:
@@ -254,12 +255,15 @@ ENV JSP_POSITRON_LAUNCHER_DISABLED=1
 # version tracked by this Bakery image version; override with
 # --build-arg POSITRON_VERSION=... to test a different release locally.
 # NOTE: 2026.07.0+ hardened licensing — it requires a signed license TOKEN
-# (a raw .lic no longer works and it fails closed). jupyter_server_config.py mints
-# that token at runtime from a signing key; see the licensing block there.
-# CRITICAL: the license public key is BAKED INTO the positron-server binary and was
-# ROTATED at 2026.07.1 (2026.07.0's key differs). The signing key stored in Secrets
-# Manager must pair with the public key of the EXACT build shipped here — this
-# version pins the build whose OrchestratorPublicKey matches our signing key.
+# (a raw .lic no longer works and it fails closed). This applies to the SECRETS
+# MANAGER FALLBACK only: with the License Manager client installed (the default
+# below), positron-server takes its verdict from that client and mints nothing,
+# so the key pairing described here is not in play.
+# CRITICAL for a no-client build: the license public key is BAKED INTO the
+# positron-server binary and was ROTATED at 2026.07.1 (2026.07.0's key differs).
+# The signing key stored in Secrets Manager must pair with the public key of the
+# EXACT build shipped here — this version pins the build whose
+# OrchestratorPublicKey matches our signing key.
 ARG POSITRON_VERSION=2026.08.1-2
 
 # CDN channel the Positron Server tarball is pulled from: "releases" for a
@@ -285,9 +289,12 @@ RUN mkdir -p /opt/positron-server \
     && tar -xzf /tmp/positron.tar.gz -C /opt/positron-server --strip-components=1 \
     && rm /tmp/positron.tar.gz \
     && ln -s /opt/positron-server/bin/positron-server /usr/local/bin/positron-server \
-    # jupyter_server_config.py writes the fetched license.lic into this activation
-    # dir at startup (next to the bundled license-manager binary, which validates
-    # it), so it must be writable by the runtime user (uid 1000).
+    # The dir itself ships inside the positron-server tarball. On a build
+    # without the License Manager client, jupyter_server_config.py writes the
+    # fetched license.lic into it at startup (next to the bundled
+    # license-manager binary, which validates it), so it must be writable by
+    # the runtime user (uid 1000). Harmless on a License Manager build, which
+    # writes nothing here.
     && chown -R 1000:100 /opt/positron-server/resources/activation
 
 # --- AWS License Manager licensing client ----------------------------------
@@ -304,7 +311,10 @@ RUN mkdir -p /opt/positron-server \
 # LICENSE_MANAGER_CLIENT_VERSION="" to skip the install and reproduce the
 # older signing-key-only image. When the binary is present,
 # jupyter_server_config.py exports POSITRON_LICENSE_MANAGER_PATH so License
-# Manager takes precedence; otherwise it falls back to the signing-key path.
+# Manager takes precedence, and SKIPS the Secrets Manager bootstrap entirely —
+# no signing-key or .lic lookup is attempted, so a correctly-licensed image
+# logs no licensing errors. Without the binary it falls back to the
+# signing-key path unchanged.
 # The variable is only exported when the binary actually exists, since pointing
 # it at a missing file makes positron-server fail outright instead of falling
 # back.

@@ -137,8 +137,9 @@ command:
 
 user:
   # --- The runtime user's uid/gid stay pinned to the base image's default ---
-  # jupyter_server_config.py writes license.lic under the activation dir
-  # (below) at startup, so the numeric ids matter, not just the names --
+  # On a build without the License Manager client, jupyter_server_config.py
+  # writes license.lic under the activation dir (below) at startup, so the
+  # numeric ids matter, not just the names --
   # `owner`/`group` on the file resources below only assert the NAMES resolve
   # correctly, so pin the underlying ids here too in case the base image ever
   # changes what "sagemaker-user"/"users" map to.
@@ -154,9 +155,12 @@ group:
 
 file:
   # --- Activation directory owner/group --------------------------------------
-  # jupyter_server_config.py writes the fetched license.lic here at startup;
-  # it must be writable by the runtime user (sagemaker-user, uid 1000, gid 100
-  # / group "users" -- the base image's default, not one this image creates).
+  # The Secrets Manager fallback path in jupyter_server_config.py writes the
+  # fetched license.lic here at startup (the default License Manager build
+  # never does), so it must be writable by the runtime user (sagemaker-user,
+  # uid 1000, gid 100 / group "users" -- the base image's default, not one
+  # this image creates). Asserted at directory level: the file itself is only
+  # present at runtime, and only on a no-client build.
   /opt/positron-server/resources/activation:
     exists: true
     filetype: directory
