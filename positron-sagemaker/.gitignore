@@ -2,6 +2,5 @@
 positron-server-linux-*.tar.gz
 positron-reh-*.tar.gz
 
-# License signing keys (PEM). Only ever needed locally for testing. Never
-# commit a private key.
+# Private keys (PEM). Never commit one.
 *.pem
