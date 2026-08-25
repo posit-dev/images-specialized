@@ -2,7 +2,7 @@
 {%- import "quarto.j2" as quarto -%}
 {%- import "r.j2" as r -%}
 {#-
-The pinned base image (public.ecr.aws/sagemaker/sagemaker-distribution:4.4.0-cpu,
+The pinned base image (public.ecr.aws/sagemaker/sagemaker-distribution:4.4.1-cpu,
 see the FROM line below) is Ubuntu 24.04 "noble". Image.OS is only populated
 when an image declares variants, which this one does not, so r.j2's
 get_p3m_cran_repo() needs the codename supplied explicitly here instead. This
@@ -31,7 +31,7 @@ Ubuntu release.
 # check on this tag yet; the assertions further down that fail the build if
 # the base image's R/Positron/JupyterLab internals change unexpectedly are the
 # drift protection carried over from the prototype.
-FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.0-cpu
+FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.1-cpu
 
 USER root
 

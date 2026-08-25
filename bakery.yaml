@@ -153,7 +153,7 @@ images:
           - host: "935931255537.dkr.ecr.us-east-1.amazonaws.com"
             repository: "positron-sagemaker"
     versions:
-      - name: 2026.08.1-2
+      - name: 2026.08.2-4
         subpath: '2026.08'
         latest: true
         os:
@@ -168,11 +168,10 @@ images:
             version: 4.6.1
   - name: session-complete
     displayName: "Posit Workbench Session Complete"
-    description: "A Posit Workbench session image with a full Workbench
-      installation layered on, so the session components ship in the image and
-      sessions run without a workbench-session-init init container alongside
-      them. Mirrors the Workbench installation used by the r-session-complete
-      image on a workbench-session base."
+    description: "A Posit Workbench session image with a full Workbench installation
+      layered on, so the session components ship in the image and sessions run without
+      a workbench-session-init init container alongside them. Mirrors the Workbench
+      installation used by the r-session-complete image on a workbench-session base."
     documentationUrl: "https://docs.posit.co/ide/server-pro/integration/kubernetes.html"
     variants:
       - name: Standard
