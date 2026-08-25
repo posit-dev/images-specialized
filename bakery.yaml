@@ -112,6 +112,13 @@ images:
     description: A custom JupyterLab image that runs Posit's Positron IDE inside
       Amazon SageMaker Studio, built on the sagemaker-distribution base image.
     documentationUrl: https://github.com/posit-dev/positron-sagemaker
+    # SOCI-index the pushed images so SageMaker Studio / ECR can lazily pull
+    # layers. Applied to the final tags by the merge job's `bakery ci publish`
+    # (oras index-create -> soci-convert -> index-copy). See
+    # .github/workflows/positron-sagemaker.yml.
+    options:
+      - tool: soci
+        enabled: true
     extraRegistries:
       - host: "public.ecr.aws"
         namespace: "m0i8p2s7"
