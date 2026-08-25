@@ -162,196 +162,36 @@ try:
 except FileNotFoundError:
     logger.warning(f"POSITRON_ENFORCED_SETTINGS file not found: {_enforced_settings_path}")
 
-# Positron license: check real entitlement, then mint a signed license TOKEN at
-# each positron-server launch.
+# Positron license: AWS License Manager.
 #
-# positron-server >= 2026.07.0 hardened licensing: it no longer accepts a raw
-# `.lic` file as its OWN input — it requires a short-lived RSA-signed JSON token
-# bound to the server's --connection-token, and it FAILS CLOSED (the process
-# exits) without a valid one. So we fetch the licensee's SIGNING KEY (whose
-# public half is embedded in positron-server) and mint the token in-process.
+# positron-server 2026.08+ accepts POSITRON_LICENSE_MANAGER_PATH: it runs the
+# named binary, treats that client's verdict as the licensing decision, and
+# needs no key or license file of its own (positron-dev/positron#15538). For
+# SageMaker that client is `license-manager-aws-sagemaker` from
+# rstudio/licensing-clients, which checks a seat out of AWS License Manager
+# under the Space's execution role — the same entitlement path RStudio on
+# SageMaker already uses.
 #
-# BUT: the signing key alone lets anyone who holds it mint a validly-signed
-# token regardless of whether there is a genuine Positron entitlement — the
-# token proves the *session* is legitimate, not that the *deployment* is
-# licensed. The real entitlement check is a SEPARATE mechanism: Posit's
-# `license-manager` binary (bundled in positron-server's own
-# resources/activation dir; it's the same rstudio::activation / TurboActivate
-# machinery RStudio Server Pro/Workbench use) validates a genuine `.lic` file
-# via `license-manager verify --output=json`. In the reference JupyterHub
-# deployment this check lives in jupyter_positron_verifier's EntitlementChecker,
-# gating its Hub-side minting service. We have no JupyterHub here (SageMaker's
-# JupyterLab app is a standalone jupyter-server, not a Hub) and that service's
-# /mint endpoint hard-requires a Hub API to authenticate callers anyway — so we
-# vendor just the entitlement CHECK (a ~20-line subprocess call) synchronously,
-# the same way we already vendor the Signer, rather than depending on
-# jupyter-positron-verifier's full package (which would pull in fastapi/httpx/
-# uvicorn for a Hub-auth path we can't use).
+# This is the ONLY licensing mechanism in this image. An earlier proof of
+# concept minted an RSA-signed token in-process from a signing key plus a `.lic`
+# file, both pulled from AWS Secrets Manager; that path has been removed along
+# with the secrets it depended on. Nothing here reads Secrets Manager, so the
+# image no longer emits misleading "store the license in Secrets Manager"
+# errors on a correctly-licensed deployment.
 #
-# Two load-bearing details:
-#   * The token is valid only within +/-5 min of its timestamp, and positron-server
-#     is launched LAZILY by jupyter-server-proxy (possibly long after this config
-#     loads). So we check entitlement and mint inside a per-spawn `command`
-#     callable, which jupyter-server-proxy re-evaluates at each process start
-#     (handlers.py get_cmd) — NOT here at load time, where the token would be
-#     stale by the time the user opens Positron.
-#   * We sign inline with `cryptography` (RSA PKCS#1 v1.5 / SHA-256 over
-#     connection_token + issuer + licensee + timestamp, timestamp = JavaScript
-#     toISOString()). This is vendored verbatim from jupyter_positron_verifier's
-#     Signer.mint (0.0.1) and matches positron-server's remoteLicenseKey.ts
-#     verifier exactly — keep in sync if you bump POSITRON_VERSION. issuer/licensee
-#     come from the entitlement check below (not cosmetic — they're the genuine
-#     licensee/issuer off the activated license); positron-server itself does not
-#     independently verify them, so getting them right matters for OUR gate, not
-#     positron-server's.
-#
-# NOTE ON SECRECY: unlike the signing key's original intent, this does NOT hide
-# the license file from the end user. SageMaker's single-container topology
-# means the user already holds the execution role and can fetch either secret
-# directly — that boundary was already gone before this change. What this DOES
-# do is require a genuine, currently-activated license for minting to happen at
-# all: without one, no token is issued and positron-server fails closed exactly
-# as it does today for a missing signing key.
-#
-# Best-effort: any failure logs LOUDLY and leaves positron-server unlicensed (it
-# then refuses to start), but never breaks the JupyterLab server itself.
-import base64 as _base64
-import json as _json
-import subprocess as _subprocess
-from datetime import datetime as _datetime, timezone as _timezone  # noqa: E402
-
-_POSITRON_SERVER_DIR = "/opt/positron-server"
-_POSITRON_ACTIVATION_DIR = f"{_POSITRON_SERVER_DIR}/resources/activation/linux/x86_64"
-_LICENSE_MANAGER_PATH = f"{_POSITRON_ACTIVATION_DIR}/license-manager"
-_LICENSE_FILE_PATH = f"{_POSITRON_ACTIVATION_DIR}/license.lic"
+# The Containerfile installs the client unconditionally and fails the build if
+# it cannot, so the binary is expected to be present. We still check for it at
+# runtime rather than assume: POSITRON_LICENSE_MANAGER_PATH pointing at a
+# missing binary makes positron-server fail immediately, which surfaces to the
+# user as an opaque proxy timeout, whereas a missing client detected here
+# serves the explanatory license-error page below instead.
+_LM_CLIENT_PATH = "/usr/lib/positron-server/bin/license-manager-aws-sagemaker"
+_LM_CLIENT_PRESENT = _os.path.isfile(_LM_CLIENT_PATH) and _os.access(_LM_CLIENT_PATH, _os.X_OK)
 
 
-def _load_signing_key_pem():
-    """Resolve the RSA signing-key PEM: explicit env first (local testing /
-    override), then AWS Secrets Manager (the admin-managed, rotatable source)."""
-    _pem = _os.environ.get("POSITRON_SIGNING_KEY")
-    if _pem:
-        logger.info("Positron license: signing key from POSITRON_SIGNING_KEY env")
-        return _pem
-    _key_file = _os.environ.get("POSITRON_SIGNING_KEY_FILE")
-    if _key_file:
-        with open(_key_file) as _fh:
-            logger.info(f"Positron license: signing key from file {_key_file}")
-            return _fh.read()
-    _secret_id = _os.environ.get("POSITRON_SIGNING_KEY_SECRET_ID", "positron-signing-key")
-    _region = (
-        _os.environ.get("POSITRON_SIGNING_KEY_SECRET_REGION")
-        or _os.environ.get("AWS_REGION")
-        or _os.environ.get("AWS_DEFAULT_REGION")
-    )
-    import boto3  # present in the sagemaker-distribution base
-
-    _resp = boto3.client("secretsmanager", region_name=_region).get_secret_value(
-        SecretId=_secret_id
-    )
-    _pem = _resp.get("SecretString")
-    if not _pem:
-        raise ValueError("secret has no SecretString value")
-    logger.info(
-        f"Positron license: signing key from Secrets Manager secret '{_secret_id}'"
-    )
-    return _pem
-
-
-def _load_license_content():
-    """Resolve the Positron license (.lic) content: explicit env first (local
-    testing / override), then AWS Secrets Manager (the admin-managed source).
-    Unlike the signing key, the license is NOT tied to a specific
-    POSITRON_VERSION build — entitlement and the signed-token public key rotate
-    independently."""
-    _lic = _os.environ.get("POSITRON_LICENSE")
-    if _lic:
-        logger.info("Positron license: license file from POSITRON_LICENSE env")
-        return _lic
-    _lic_file = _os.environ.get("POSITRON_LICENSE_FILE")
-    if _lic_file:
-        with open(_lic_file) as _fh:
-            logger.info(f"Positron license: license file from file {_lic_file}")
-            return _fh.read()
-    _secret_id = _os.environ.get("POSITRON_LICENSE_SECRET_ID", "positron-license")
-    _region = (
-        _os.environ.get("POSITRON_LICENSE_SECRET_REGION")
-        or _os.environ.get("AWS_REGION")
-        or _os.environ.get("AWS_DEFAULT_REGION")
-    )
-    import boto3  # present in the sagemaker-distribution base
-
-    _resp = boto3.client("secretsmanager", region_name=_region).get_secret_value(
-        SecretId=_secret_id
-    )
-    _lic = _resp.get("SecretString")
-    if not _lic:
-        raise ValueError("secret has no SecretString value")
-    logger.info(
-        f"Positron license: license file from Secrets Manager secret '{_secret_id}'"
-    )
-    return _lic
-
-
-# Install the license file once, next to license-manager, so license-manager can
-# validate it directly off disk (mirrors Posit's own TLJH install script, which
-# `install`s an admin-supplied .lic to the same path — we just source it from
-# Secrets Manager instead of a local file). Failure here isn't fatal by itself;
-# it surfaces as an entitlement-check failure below, which blocks minting.
-try:
-    _os.makedirs(_POSITRON_ACTIVATION_DIR, exist_ok=True)
-    with open(_LICENSE_FILE_PATH, "w") as _fh:
-        _fh.write(_load_license_content())
-    _os.chmod(_LICENSE_FILE_PATH, 0o600)
-    logger.info(f"Positron license: license file installed to {_LICENSE_FILE_PATH}")
-except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
-    logger.error(
-        f"Positron license: could NOT install license file "
-        f"({type(_exc).__name__}: {_exc}). The entitlement check below will "
-        f"fail and positron-server will not be licensed — store the license in "
-        f"Secrets Manager (POSITRON_LICENSE_SECRET_ID, default "
-        f"'positron-license') and grant the execution role "
-        f"secretsmanager:GetSecretValue, or set POSITRON_LICENSE_FILE for "
-        f"local runs"
-    )
-
-
-def _check_entitlement():
-    """Check real entitlement via license-manager. Vendored (and made
-    synchronous, since we run inline in a per-spawn callable rather than an
-    async FastAPI service) from jupyter_positron_verifier.entitlement.
-    EntitlementChecker (0.0.1). Returns (valid, licensee, issuer); never
-    raises — any failure is treated as unlicensed."""
-    try:
-        _proc = _subprocess.run(
-            [_LICENSE_MANAGER_PATH, "verify", "--output=json"],
-            capture_output=True,
-            timeout=10,
-        )
-        _raw = _proc.stdout.decode()
-        # The verify command prefixes output with a hash line; find the JSON.
-        _start = _raw.find("{")
-        if _start >= 0:
-            _raw = _raw[_start:]
-        _data = _json.loads(_raw)
-        _status = (_data.get("status") or "").lower()
-        if _status in ("activated", "evaluation"):
-            _licensee = _data.get("licensee", "")
-            logger.info(f"Positron license: entitlement valid (status={_status}, licensee={_licensee})")
-            return True, _licensee, _data.get("issuer", "")
-        logger.error(f"Positron license: entitlement invalid ({_data})")
-        return False, "", ""
-    except Exception as _exc:  # noqa: BLE001
-        logger.error(
-            f"Positron license: entitlement check failed "
-            f"({type(_exc).__name__}: {_exc}); treating as unlicensed"
-        )
-        return False, "", ""
-
-
-# License-error landing page: if licensing fails for any reason (missing signing
-# key, failed entitlement check, minting error), we don't want the user to just
-# see jupyter-server-proxy's generic "process didn't start in time" error. So
+# License-error landing page: if the License Manager client is missing, we don't
+# want the user to just see jupyter-server-proxy's generic "process didn't start
+# in time" error. So
 # instead of launching positron-server at all, we launch a tiny stdlib-only HTTP
 # server on the SAME port jupyter-server-proxy assigned, serving a plain page
 # that explains the license is missing/invalid and how to reach out. This works
@@ -388,7 +228,8 @@ _LICENSE_ERROR_HTML = """<!DOCTYPE html>
     requires a currently-activated license to run, and none could be found
     for this deployment.</p>
     <p>If you believe this is a mistake, check with whoever administers this
-    image about the Positron signing key and license file configuration.</p>
+    image about the AWS License Manager entitlement for Positron in this
+    account.</p>
     <p>To get set up with a Positron license, please contact
     <a href="mailto:sales@posit.co">sales@posit.co</a>.</p>
   </div>
@@ -446,143 +287,45 @@ def _license_error_command(port):
     return ["/usr/bin/env", "python3", _LICENSE_ERROR_SERVER_PATH, str(port)]
 
 
-# Load the signing key once (the key is stable; only the token is minted per spawn).
-_signing_key = None
-_sign_padding = None
-_sign_hash = None
-try:
-    from cryptography.hazmat.primitives import hashes as _c_hashes  # noqa: E402
-    from cryptography.hazmat.primitives import serialization as _c_serialization
-    from cryptography.hazmat.primitives.asymmetric import padding as _c_padding
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey as _RSAKey
-
-    _signing_key = _c_serialization.load_pem_private_key(
-        _load_signing_key_pem().encode(), password=None
-    )
-    if not isinstance(_signing_key, _RSAKey):
-        raise TypeError("signing key is not an RSA private key")
-    _sign_padding = _c_padding.PKCS1v15()
-    _sign_hash = _c_hashes.SHA256()
-    logger.info(
-        "Positron license: RSA signing key loaded; minting a signed token per launch"
-    )
-except Exception as _exc:  # noqa: BLE001 - best-effort, must never break startup
-    _signing_key = None
-    logger.error(
-        f"Positron license: could NOT load signing key "
-        f"({type(_exc).__name__}: {_exc}). positron-server requires a signed "
-        f"license token and will fail to start without one — store the key in "
-        f"Secrets Manager (POSITRON_SIGNING_KEY_SECRET_ID, default "
-        f"'positron-signing-key') and grant the execution role "
-        f"secretsmanager:GetSecretValue, or set POSITRON_SIGNING_KEY_FILE for "
-        f"local runs"
-    )
-
-
-def _mint_license_token(connection_token, issuer="", licensee=""):
-    """Mint a positron-server license token. Vendored verbatim from
-    jupyter_positron_verifier.signing.Signer.mint (0.0.1): RSA PKCS#1 v1.5 / SHA-256
-    over connection_token + issuer + licensee + timestamp, with the timestamp in
-    JavaScript ``new Date().toISOString()`` form. Matches positron-server's
-    remoteLicenseKey.ts verifier exactly."""
-    _now = _datetime.now(_timezone.utc)
-    _timestamp = _now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{_now.microsecond // 1000:03d}Z"
-    _payload = (connection_token + issuer + licensee + _timestamp).encode()
-    _signature = _base64.b64encode(
-        _signing_key.sign(_payload, _sign_padding, _sign_hash)
-    ).decode()
-    return _json.dumps(
-        {
-            "connection_token": connection_token,
-            "issuer": issuer,
-            "licensee": licensee,
-            "timestamp": _timestamp,
-            "signature": _signature,
-        }
-    )
-
-# Wrap positron-server's launch command so a FRESH entitlement check runs and a
-# FRESH token is minted at each spawn, injected as POSITRON_LICENSE_KEY. On ANY
-# licensing failure (no signing key, failed entitlement, minting error), we
-# launch the error-page server (above) instead of positron-server, so the user
-# gets a clear message instead of jupyter-server-proxy's generic "didn't start
-# in time" failure. We declare `port` so jupyter-server-proxy's
-# call_with_asked_args injects the port it assigned (handlers.py
-# ServerProxyHandler.process_args) — needed either way, since positron-server's
-# own command already has it baked in via templating, but our error-page
-# fallback must bind to that exact same port.
-# setup_positron_server()'s direct-launch command is
-# ["/usr/bin/env", "LD_LIBRARY_PATH=...", <binary>, ...args]; we splice the
-# license var into that leading `/usr/bin/env` prefix. The JSON braces are
-# doubled so jupyter-server-proxy's str.format() templating leaves them intact
-# (mirrors jupyter-positron-server's own hub-minting command builder).
-# --- AWS License Manager (preferred, when the client is present) -----------
-# positron-server 2026.08+ accepts POSITRON_LICENSE_MANAGER_PATH: it runs the
-# named binary, treats that client's verdict as the licensing decision, and
-# ignores the key sources entirely (positron-dev/positron#15538). That is the
-# target mechanism for this image — the entitlement lives in AWS License
-# Manager and is checked out per session under the execution role, so there is
-# no signing key or .lic to distribute.
+# Point positron-server at the License Manager client. setup_positron_server()'s
+# direct-launch command is ["/usr/bin/env", "LD_LIBRARY_PATH=...", <binary>,
+# ...args], so we splice the licensing vars into that leading `/usr/bin/env`
+# prefix.
 #
-# The variable is only exported when the client is actually installed: a
-# POSITRON_LICENSE_MANAGER_PATH pointing at a missing binary makes
-# positron-server fail immediately rather than fall back. The Containerfile
-# installs the client only when built with LICENSE_MANAGER_CLIENT_URL set, so
-# an image built without it keeps the signing-key path below unchanged.
-_LM_CLIENT_PATH = "/usr/lib/positron-server/bin/license-manager-aws-sagemaker"
-_LM_CLIENT_PRESENT = _os.path.isfile(_LM_CLIENT_PATH) and _os.access(_LM_CLIENT_PATH, _os.X_OK)
-
+# If the client is missing the image is misbuilt — no other licensing path
+# remains — so we serve the license-error page rather than launch an unlicensed
+# positron-server, which would fail closed as an opaque "didn't start in time".
+# That branch is a per-spawn callable so it can declare `port`, which
+# jupyter-server-proxy's call_with_asked_args injects (handlers.py
+# ServerProxyHandler.process_args); the error-page server has to bind the exact
+# port the proxy assigned.
 _orig_command = cfg.get("command")
-if _LM_CLIENT_PRESENT and isinstance(_orig_command, list) and _orig_command:
-    logger.info(
-        "Positron license: using AWS License Manager via "
-        f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}"
-    )
-    _cmd = list(_orig_command)
-    _lm_vars = [
-        f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}",
-        f"LM_LOG_FILE={_os.environ.get('LM_LOG_FILE', '/tmp/sagemaker-lm.log')}",
-    ]
-    if _cmd[0] == "/usr/bin/env":
-        cfg["command"] = _cmd[:1] + _lm_vars + _cmd[1:]
-    else:
-        cfg["command"] = ["/usr/bin/env"] + _lm_vars + _cmd
-
-elif isinstance(_orig_command, list) and _orig_command:
-
-    def _positron_command_with_license(port):
-        if _signing_key is None:
-            logger.error(
-                "Positron license: no signing key available; serving the "
-                "license-error page instead of launching positron-server."
-            )
-            return _license_error_command(port)
-        _valid, _licensee, _issuer = _check_entitlement()
-        if not _valid:
-            logger.error(
-                "Positron license: entitlement check failed; serving the "
-                "license-error page instead of launching positron-server "
-                "(this is fail-closed, working as intended)."
-            )
-            return _license_error_command(port)
-        try:
-            _token = _mint_license_token(_POSITRON_TOKEN, issuer=_issuer, licensee=_licensee)
-        except Exception as _exc:  # noqa: BLE001
-            logger.error(
-                f"Positron license: token minting failed "
-                f"({type(_exc).__name__}: {_exc}); serving the license-error "
-                f"page instead of launching positron-server"
-            )
-            return _license_error_command(port)
-        _escaped = _token.replace("{", "{{").replace("}", "}}")
+if isinstance(_orig_command, list) and _orig_command:
+    if _LM_CLIENT_PRESENT:
+        logger.info(
+            "Positron license: using AWS License Manager via "
+            f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}"
+        )
         _cmd = list(_orig_command)
+        _lm_vars = [
+            f"POSITRON_LICENSE_MANAGER_PATH={_LM_CLIENT_PATH}",
+            f"LM_LOG_FILE={_os.environ.get('LM_LOG_FILE', '/tmp/sagemaker-lm.log')}",
+        ]
         if _cmd[0] == "/usr/bin/env":
-            _cmd.insert(1, f"POSITRON_LICENSE_KEY={_escaped}")
+            cfg["command"] = _cmd[:1] + _lm_vars + _cmd[1:]
         else:
-            _cmd = ["/usr/bin/env", f"POSITRON_LICENSE_KEY={_escaped}"] + _cmd
-        return _cmd
+            cfg["command"] = ["/usr/bin/env"] + _lm_vars + _cmd
+    else:
+        logger.error(
+            f"Positron license: AWS License Manager client not found at "
+            f"{_LM_CLIENT_PATH} — this image is misbuilt. Serving the "
+            f"license-error page instead of launching positron-server."
+        )
 
-    cfg["command"] = _positron_command_with_license
+        def _positron_command_unlicensed(port):
+            return _license_error_command(port)
+
+        cfg["command"] = _positron_command_unlicensed
 
 # AWS Toolkit: make the bundled extension (and the integrated terminal / boto3)
 # resolve the SageMaker execution role out of the box. SageMaker delivers the

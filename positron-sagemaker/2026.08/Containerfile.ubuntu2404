@@ -3,10 +3,10 @@
 # Positron on Amazon SageMaker — a custom JupyterLab image that runs Posit's
 # Positron IDE inside SageMaker Studio, on the sagemaker-distribution base.
 # Adds Positron Server, R + Python runtimes (with Shiny + uv), and a
-# Bedrock-backed Posit Assistant. Licensing is applied at runtime: AWS License
-# Manager when the licensing client is installed (see
-# LICENSE_MANAGER_CLIENT_VERSION), otherwise AWS Secrets Manager. No license is
-# baked into the image. See README.md.
+# Bedrock-backed Posit Assistant. Licensing is applied at runtime by AWS License
+# Manager, via the licensing client installed from the Posit CDN (see
+# LICENSE_MANAGER_CLIENT_VERSION). No license is baked into the image.
+# See README.md.
 #
 # Positron Server is downloaded from the Posit CDN at build time, so no local
 # tarball is required:
@@ -182,16 +182,16 @@ ENV ODBCSYSINI=/etc
 # --- jupyter-server-proxy stack + Python tooling ---------------------------
 # Install into the base's active conda env so the running jupyter-server loads
 # the extension. jupyter-server-proxy auto-enables via its entry point.
-# jupyter-positron-server >= 0.0.5 is required for the 2026.07 signed-token
-# licensing era. `cryptography` backs the in-process license-token minting in
-# jupyter_server_config.py (it RSA-signs a per-launch token; see the licensing
-# block there) — it is usually already in the base, but we pin it explicitly so
-# minting never breaks. uv is installed into /opt/conda/bin (on PATH, and NOT under
-# the home dir that SageMaker mounts a volume over) so Positron's uv integration
-# works at runtime.
+# jupyter-positron-server >= 0.0.5 provides the proxy integration that
+# jupyter_server_config.py builds on. uv is installed into /opt/conda/bin (on
+# PATH, and NOT under the home dir that SageMaker mounts a volume over) so
+# Positron's uv integration works at runtime.
+#
+# `cryptography` was pinned here to back in-process license-token minting. That
+# licensing path was removed in favour of AWS License Manager, so the pin went
+# with it.
 RUN pip install --no-cache-dir \
         jupyter-server-proxy 'jupyter-positron-server>=0.0.5' \
-        cryptography \
         shiny ipykernel matplotlib pyodbc \
         uv
 
@@ -253,13 +253,11 @@ ENV JSP_POSITRON_LAUNCHER_DISABLED=1
 # Positron Server version to download from the Posit CDN. Defaults to the
 # version tracked by this Bakery image version; override with
 # --build-arg POSITRON_VERSION=... to test a different release locally.
-# NOTE: 2026.07.0+ hardened licensing — it requires a signed license TOKEN
-# (a raw .lic no longer works and it fails closed). jupyter_server_config.py mints
-# that token at runtime from a signing key; see the licensing block there.
-# CRITICAL: the license public key is BAKED INTO the positron-server binary and was
-# ROTATED at 2026.07.1 (2026.07.0's key differs). The signing key stored in Secrets
-# Manager must pair with the public key of the EXACT build shipped here — this
-# version pins the build whose OrchestratorPublicKey matches our signing key.
+# NOTE: licensing is delegated entirely to the AWS License Manager client
+# installed below, so this only has to be a positron-server build that supports
+# POSITRON_LICENSE_MANAGER_PATH (2026.08+). There is no signing key and no
+# baked-in public key to keep paired with the chosen version — the constraint
+# that used to make this line load-bearing is gone.
 ARG POSITRON_VERSION=2026.08.1-2
 
 # CDN channel the Positron Server tarball is pulled from: "releases" for a
@@ -284,11 +282,7 @@ RUN mkdir -p /opt/positron-server \
         -o /tmp/positron.tar.gz \
     && tar -xzf /tmp/positron.tar.gz -C /opt/positron-server --strip-components=1 \
     && rm /tmp/positron.tar.gz \
-    && ln -s /opt/positron-server/bin/positron-server /usr/local/bin/positron-server \
-    # jupyter_server_config.py writes the fetched license.lic into this activation
-    # dir at startup (next to the bundled license-manager binary, which validates
-    # it), so it must be writable by the runtime user (uid 1000).
-    && chown -R 1000:100 /opt/positron-server/resources/activation
+    && ln -s /opt/positron-server/bin/positron-server /usr/local/bin/positron-server
 
 # --- AWS License Manager licensing client ----------------------------------
 # positron-server 2026.08+ can take its licensing verdict from an external
@@ -298,16 +292,19 @@ RUN mkdir -p /opt/positron-server \
 # under the Space's execution role — the same entitlement path RStudio on
 # SageMaker already uses.
 #
-# Installed by default from the Posit CDN. To update the client, bump
+# REQUIRED. This client is the image's ONLY licensing mechanism, so the install
+# is unconditional and the build FAILS if the tarball cannot be fetched or does
+# not match its checksum — much better than silently shipping an image that can
+# never license Positron. To update the client, bump
 # LICENSE_MANAGER_CLIENT_VERSION and set LICENSE_MANAGER_CLIENT_SHA256 to the
-# matching checksum of the published tarball. Set
-# LICENSE_MANAGER_CLIENT_VERSION="" to skip the install and reproduce the
-# older signing-key-only image. When the binary is present,
-# jupyter_server_config.py exports POSITRON_LICENSE_MANAGER_PATH so License
-# Manager takes precedence; otherwise it falls back to the signing-key path.
-# The variable is only exported when the binary actually exists, since pointing
-# it at a missing file makes positron-server fail outright instead of falling
-# back.
+# matching checksum of the published tarball; the checksum is mandatory, so a
+# version bump without one fails the build rather than installing an unverified
+# binary.
+#
+# At runtime jupyter_server_config.py exports POSITRON_LICENSE_MANAGER_PATH
+# pointing at the installed binary. If it is ever missing, that config serves an
+# explanatory license-error page instead of launching an unlicensed
+# positron-server. goss asserts the binary is present and executable.
 #
 # The tarball is published (as an uncompressed tar, despite the .tar.gz name)
 # at <base-url>/licensing-clients-aws-sagemaker-<version>.tar.gz. The client is
@@ -315,22 +312,16 @@ RUN mkdir -p /opt/positron-server \
 ARG LICENSE_MANAGER_CLIENT_VERSION="1.2.6-89"
 ARG LICENSE_MANAGER_CLIENT_BASE_URL="https://cdn.posit.co/platform/marketplace/license/aws-sagemaker"
 ARG LICENSE_MANAGER_CLIENT_SHA256="37edcffb36a81185cd265f5e2f318e2205c8fb002dcd8538f59b7bba012b41d6"
-RUN if [ -n "${LICENSE_MANAGER_CLIENT_VERSION}" ]; then \
-        url="${LICENSE_MANAGER_CLIENT_BASE_URL}/licensing-clients-aws-sagemaker-${LICENSE_MANAGER_CLIENT_VERSION}.tar.gz" \
-        && curl -fsSL "${url}" -o /tmp/lm.tar.gz \
-        && if [ -n "${LICENSE_MANAGER_CLIENT_SHA256}" ]; then \
-               echo "${LICENSE_MANAGER_CLIENT_SHA256}  /tmp/lm.tar.gz" | sha256sum -c -; \
-           else \
-               echo "WARNING: LICENSE_MANAGER_CLIENT_SHA256 not set; skipping checksum" >&2; \
-           fi \
-        && mkdir -p /usr/lib/positron-server/bin \
-        && tar -xf /tmp/lm.tar.gz -C /usr/lib/positron-server/bin license-manager-aws-sagemaker \
-        && chmod 0755 /usr/lib/positron-server/bin/license-manager-aws-sagemaker \
-        && rm /tmp/lm.tar.gz \
-        # Verify the client is present and executable; do not run it at build
-        # time (it attempts a license checkout and has no no-op mode).
-        && test -x /usr/lib/positron-server/bin/license-manager-aws-sagemaker; \
-    fi
+RUN url="${LICENSE_MANAGER_CLIENT_BASE_URL}/licensing-clients-aws-sagemaker-${LICENSE_MANAGER_CLIENT_VERSION}.tar.gz" \
+    && curl -fsSL "${url}" -o /tmp/lm.tar.gz \
+    && echo "${LICENSE_MANAGER_CLIENT_SHA256}  /tmp/lm.tar.gz" | sha256sum -c - \
+    && mkdir -p /usr/lib/positron-server/bin \
+    && tar -xf /tmp/lm.tar.gz -C /usr/lib/positron-server/bin license-manager-aws-sagemaker \
+    && chmod 0755 /usr/lib/positron-server/bin/license-manager-aws-sagemaker \
+    && rm /tmp/lm.tar.gz \
+    # Verify the client is present and executable; do not run it at build
+    # time (it attempts a license checkout and has no no-op mode).
+    && test -x /usr/lib/positron-server/bin/license-manager-aws-sagemaker
 
 # --- AWS Toolkit (built-in VS Code extension) ------------------------------
 # Ship the AWS Toolkit as a positron-server BUILT-IN extension so it loads for
