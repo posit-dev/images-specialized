@@ -61,7 +61,7 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.08.1+195.pro1
+      - name: 2026.08.2+200.pro1
         subpath: '2026.08'
         latest: true
         os:
@@ -96,7 +96,7 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.08.1+195.pro1
+      - name: 2026.08.2+200.pro1
         subpath: '2026.08'
         latest: true
         os:
@@ -196,23 +196,10 @@ images:
       # pin for the rstudio-server package in scripts/install_workbench.sh.
       # It is not an R/Python matrix coordinate -- those come from whichever
       # workbench-session base build the OS-qualified tag resolves to.
-      - name: 2026.08.1+195.pro1
+      - name: 2026.08.2+200.pro1
         subpath: '2026.08'
         latest: true
         os:
-          # Ubuntu 26.04 only. rstudio-server 2026.08.1+195.pro1 is published
-          # for amd64 in the Posit pro apt repo's `resolute` suite, and
-          # workbench-session publishes ubuntu-26.04-std / ubuntu-26.04-min
-          # base tags.
-          #
-          # amd64 only, and not merely as a scoping choice: the rstudio-server
-          # postinst hardcodes the multiarch triplet when it repoints the NSS
-          # module symlink
-          #   ln -sf /usr/lib/rstudio-server/bin/libnss_pwb.so \
-          #          /usr/lib/x86_64-linux-gnu/libnss_pwb.so.2
-          # so an arm64 build would silently leave libnss_pwb.so.2 pointing at
-          # the base image's zero-byte placeholder. Revisit if that postinst
-          # stops hardcoding x86_64-linux-gnu.
           - name: Ubuntu 26.04
             primary: true
             platforms:
