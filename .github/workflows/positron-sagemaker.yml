@@ -39,12 +39,13 @@ jobs:
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
-          # merge only runs on the push/schedule paths; a skipped merge on PR
-          # builds is expected and must not fail the required check. build and
-          # merge are both skipped when the change-aware matrix is empty (a
-          # push to main that didn't touch this image). `matrix` is in needs
-          # above so a failure there still blocks -- this only forgives a
-          # genuine no-op.
+          # Two expected skips, neither of which should fail the required check:
+          #   * merge only runs on the push/schedule paths, so it skips on a
+          #     workflow_dispatch from a branch other than main.
+          #   * build and merge both skip when the change-aware matrix is empty
+          #     (a push to main that didn't touch this image).
+          # `matrix` is in needs above so a failure there still blocks; this
+          # only forgives a genuine no-op.
           allowed-skips: build, merge
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
