@@ -30,6 +30,7 @@ jobs:
     permissions: {}
     timeout-minutes: 10
     needs:
+      - matrix
       - build
       - merge
 
@@ -39,8 +40,12 @@ jobs:
         with:
           jobs: ${{ toJSON(needs) }}
           # merge only runs on the push/schedule paths; a skipped merge on PR
-          # builds is expected and must not fail the required check.
-          allowed-skips: merge
+          # builds is expected and must not fail the required check. build and
+          # merge are both skipped when the change-aware matrix is empty (a
+          # push to main that didn't touch this image). `matrix` is in needs
+          # above so a failure there still blocks -- this only forgives a
+          # genuine no-op.
+          allowed-skips: build, merge
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
@@ -61,6 +66,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          # Full history so the change-aware diff below can reach the base ref.
+          fetch-depth: 0
 
       - name: Install
         uses: "posit-dev/images-shared/setup-bakery@main"
@@ -71,8 +78,20 @@ jobs:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
           IMAGE_NAME: "positron-sagemaker"
+          # Change-aware builds, matching bakery-build-native.yml. Only set on
+          # push events, so schedule/workflow_dispatch still build the full
+          # matrix. github.event.before is also populated on pull_request
+          # synchronize, so it must be gated on event_name rather than checked
+          # for presence alone. A bad or all-zero ref is caught by bakery's
+          # git-diff fail-safe, which falls back to a full build.
+          BASE_REF: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" "$IMAGE_NAME" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
+          ARGS=(--quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS")
+          if [ -n "$BASE_REF" ]; then
+            ARGS+=(--base-ref "$BASE_REF")
+          fi
+          ARGS+=(-- "$IMAGE_NAME")
+          echo "matrix=$(bakery ci matrix "${ARGS[@]}" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
 
   build:
     name: "${{ matrix.img.image }}:${{ matrix.img.version }}"
@@ -81,6 +100,10 @@ jobs:
       packages: write
       id-token: write
     needs: matrix
+    # GitHub Actions fails (not skips) a matrix job when the matrix evaluates
+    # to []. Guard here so a push that didn't touch this image produces
+    # 'skipped' instead of 'failure'.
+    if: ${{ needs.matrix.outputs.matrix != '[]' }}
     runs-on: ubuntu-latest-4x
     strategy:
       fail-fast: false
@@ -186,8 +209,9 @@ jobs:
       - build
     # Only the push/schedule paths produce temp images to convert. A bare `if:`
     # (no status function) implicitly requires success(), so this also skips
-    # when `build` fails.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    # when `build` fails. The matrix guard mirrors `build`'s: an empty
+    # change-aware matrix would otherwise fail this job rather than skip it.
+    if: ${{ needs.matrix.outputs.matrix != '[]' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     # Scopes the AWS_ROLE secret to the production-only role that can push to
     # the customer-facing public ECR repository. This is a distinct

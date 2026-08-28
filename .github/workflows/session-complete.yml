@@ -35,6 +35,7 @@ jobs:
     permissions: {}
     timeout-minutes: 10
     needs:
+      - matrix
       - build
 
     steps:
@@ -42,6 +43,10 @@ jobs:
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
+          # build is skipped when the change-aware matrix is empty (a push to
+          # main that didn't touch this image). `matrix` is in needs above so a
+          # failure there still blocks -- this only forgives a genuine no-op.
+          allowed-skips: build
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
@@ -62,6 +67,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          # Full history so the change-aware diff below can reach the base ref.
+          fetch-depth: 0
 
       - name: Install
         uses: "posit-dev/images-shared/setup-bakery@main"
@@ -72,8 +79,20 @@ jobs:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
           IMAGE_NAME: "session-complete"
+          # Change-aware builds, matching bakery-build-native.yml. Only set on
+          # push events, so schedule/workflow_dispatch still build the full
+          # matrix. github.event.before is also populated on pull_request
+          # synchronize, so it must be gated on event_name rather than checked
+          # for presence alone. A bad or all-zero ref is caught by bakery's
+          # git-diff fail-safe, which falls back to a full build.
+          BASE_REF: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          echo "matrix=$(bakery ci matrix --quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS" "$IMAGE_NAME" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
+          ARGS=(--quiet --dev-versions "$DEV_VERSIONS" --matrix-versions "$MATRIX_VERSIONS")
+          if [ -n "$BASE_REF" ]; then
+            ARGS+=(--base-ref "$BASE_REF")
+          fi
+          ARGS+=(-- "$IMAGE_NAME")
+          echo "matrix=$(bakery ci matrix "${ARGS[@]}" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
 
   build:
     name: "${{ matrix.img.image }}:${{ matrix.img.version }}"
@@ -81,6 +100,10 @@ jobs:
       contents: read
       packages: write
     needs: matrix
+    # GitHub Actions fails (not skips) a matrix job when the matrix evaluates
+    # to []. Guard here so a push that didn't touch this image produces
+    # 'skipped' instead of 'failure'.
+    if: ${{ needs.matrix.outputs.matrix != '[]' }}
     # ghcr.io is the only registry for this image, so no cloud provider
     # authentication (and therefore no `id-token: write`) is needed.
     runs-on: ubuntu-latest-8x
