@@ -17,6 +17,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+
+# Matches images-shared's build workflows: GitHub's default Linux shell is
+# `bash -e`, which leaves pipefail off, so a failing first stage of a pipeline
+# is silently swallowed. `shell: bash` is `bash --noprofile --norc -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   ci:
     name: CI
@@ -92,7 +100,13 @@ jobs:
             ARGS+=(--base-ref "$BASE_REF")
           fi
           ARGS+=(-- "$IMAGE_NAME")
-          echo "matrix=$(bakery ci matrix "${ARGS[@]}" | jq --compact-output .)" >> "$GITHUB_OUTPUT"
+          # Assign first, then echo. A command substitution used as an argument
+          # to echo cannot fail the step under `set -e` -- a bakery or jq
+          # failure would write an empty matrix, pass this job, and only
+          # surface as a fromJson('') error over in build. Assigning it, with
+          # pipefail from `defaults` above, fails the step here instead.
+          MATRIX=$(bakery ci matrix "${ARGS[@]}" | jq --compact-output .)
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   build:
     name: "${{ matrix.img.image }}:${{ matrix.img.version }}"
