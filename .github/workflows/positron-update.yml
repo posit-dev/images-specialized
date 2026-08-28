@@ -98,68 +98,9 @@ jobs:
             echo "old_edition=$OLD_EDITION"
           } >> "$GITHUB_OUTPUT"
 
-      # Resolves whatever :latest-cpu currently points at to a concrete,
-      # pinnable X.Y.Z-cpu tag, using ECR Public's anonymous registry token --
-      # no AWS credentials needed. See the epic's positron-sagemaker#15 comment
-      # for why this rides on the Positron update workflow rather than a
-      # separate poller or a Bakery dependency type.
-      - name: Resolve current sagemaker-distribution CPU tag
-        id: base_image
-        if: steps.positron.outputs.update_needed == 'true'
-        run: |
-          TOKEN=$(curl -sf "https://public.ecr.aws/token/?service=public.ecr.aws&scope=repository:sagemaker/sagemaker-distribution:pull" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])")
-
-          LATEST_DIGEST=$(curl -sfI -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
-            "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/manifests/latest-cpu" \
-            | grep -i '^docker-content-digest:' | tr -d '\r' | awk '{print $2}')
-
-          ALL_TAGS=$(curl -sf -H "Authorization: Bearer $TOKEN" \
-            "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/tags/list" \
-            | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)['tags']))")
-
-          # Check newest-first (sort -V descending): the highest semver tag is
-          # virtually always what 'latest' points at, so this normally matches
-          # on the first attempt rather than scanning the full tag history.
-          CANDIDATE_TAGS=$(echo "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-cpu$' | sed 's/-cpu$//' | sort -rV | sed 's/$/-cpu/')
-
-          RESOLVED_BASE_TAG=""
-          for TAG in $CANDIDATE_TAGS; do
-            DIGEST=$(curl -sfI -H "Authorization: Bearer $TOKEN" \
-              -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
-              "https://public.ecr.aws/v2/sagemaker/sagemaker-distribution/manifests/$TAG" 2>/dev/null \
-              | grep -i '^docker-content-digest:' | tr -d '\r' | awk '{print $2}' || true)
-            if [ "$DIGEST" = "$LATEST_DIGEST" ]; then
-              RESOLVED_BASE_TAG="$TAG"
-              break
-            fi
-          done
-
-          if [ -z "$RESOLVED_BASE_TAG" ]; then
-            echo "::error::Could not resolve latest-cpu to a concrete X.Y.Z-cpu tag"
-            exit 1
-          fi
-
-          CURRENT_BASE_TAG=$(grep -oP 'sagemaker-distribution:\K[0-9]+\.[0-9]+\.[0-9]+-cpu' \
-            positron-sagemaker/template/Containerfile.ubuntu2404.jinja2 | head -1)
-
-          echo "Resolved base image tag: $RESOLVED_BASE_TAG (currently pinned: $CURRENT_BASE_TAG)"
-          {
-            echo "resolved_base_tag=$RESOLVED_BASE_TAG"
-            echo "current_base_tag=$CURRENT_BASE_TAG"
-          } >> "$GITHUB_OUTPUT"
-
-      # Base image stays pinned (not tracking :latest-cpu) -- only bump the
-      # literal tag when it's actually changed, reviewed alongside the
-      # Positron bump in the same PR.
-      - name: Update base image pin
-        if: steps.positron.outputs.update_needed == 'true' && steps.base_image.outputs.resolved_base_tag != steps.base_image.outputs.current_base_tag
-        env:
-          OLD_TAG: ${{ steps.base_image.outputs.current_base_tag }}
-          NEW_TAG: ${{ steps.base_image.outputs.resolved_base_tag }}
-        run: |
-          sed -i "s/${OLD_TAG}/${NEW_TAG}/g" positron-sagemaker/template/Containerfile.ubuntu2404.jinja2
+      # The sagemaker-distribution base image pin is bumped separately by
+      # Renovate (see renovate.json's custom manager on the Containerfiles),
+      # so this workflow only tracks the Positron version.
 
       # Mirrors release.yml's version-replacement strategy: a same-edition
       # bump patches the existing version in place (preserving the pinned
@@ -197,8 +138,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           OLD_VERSION: ${{ steps.positron.outputs.current_version }}
           NEW_VERSION: ${{ steps.positron.outputs.latest_version }}
-          OLD_BASE_TAG: ${{ steps.base_image.outputs.current_base_tag }}
-          NEW_BASE_TAG: ${{ steps.base_image.outputs.resolved_base_tag }}
         run: |
           # Authenticate individual git network commands via an inline
           # header rather than persisting the token in .git/config (which
@@ -215,9 +154,6 @@ jobs:
           git -c "http.https://github.com/.extraheader=$AUTH_HEADER" push -u origin "$BRANCH" --force-with-lease
 
           BODY="Bumps Positron on SageMaker from \`${OLD_VERSION}\` to \`${NEW_VERSION}\`."
-          if [ "$OLD_BASE_TAG" != "$NEW_BASE_TAG" ]; then
-            BODY+=$'\n\n'"Also bumps the pinned base image: \`${OLD_BASE_TAG}\` -> \`${NEW_BASE_TAG}\`."
-          fi
           BODY+=$'\n\n'"Opened automatically by the update workflow. Requires human review before merging."
 
           gh pr create \

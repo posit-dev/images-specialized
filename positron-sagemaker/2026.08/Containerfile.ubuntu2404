@@ -19,6 +19,7 @@
 # check on this tag yet; the assertions further down that fail the build if
 # the base image's R/Positron/JupyterLab internals change unexpectedly are the
 # drift protection carried over from the prototype.
+# renovate: datasource=docker depName=public.ecr.aws/sagemaker/sagemaker-distribution
 FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.1-cpu
 
 USER root
