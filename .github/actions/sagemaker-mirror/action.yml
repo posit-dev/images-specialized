@@ -1,9 +1,10 @@
 name: Mirror positron-sagemaker to private ECR
 description: >
-  Pulls a specific tag of public.ecr.aws/posit/positron-sagemaker into a
-  private ECR repository and registers a SageMaker ImageVersion. Skips both
-  steps if the tag already exists in the private registry. Requires AWS
-  credentials to be configured by the calling workflow.
+  Copies a specific tag of public.ecr.aws/posit/positron-sagemaker into a
+  private ECR repository and registers a SageMaker ImageVersion. Skips the
+  copy when the tag is already in ECR, and skips the registration when the
+  tag is already an ImageVersion alias. Requires AWS credentials to be
+  configured by the calling workflow.
 
 inputs:
   tag:
