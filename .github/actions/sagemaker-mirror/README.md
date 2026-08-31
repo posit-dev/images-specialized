@@ -5,6 +5,16 @@ private Amazon ECR repository and registers a SageMaker ImageVersion. Both
 steps are skipped if the tag already exists in the private registry, so the
 action is safe to call on a schedule.
 
+Uses `oras copy --recursive` to preserve the full OCI artifact tree,
+including the SOCI index that SageMaker Studio uses for lazy image loading.
+`docker pull/push` would strip the SOCI index and collapse the image index
+to a single manifest.
+
+Polls `describe-image-version` after registration until the version reaches
+`CREATED` or `CREATE_FAILED`. `create-image-version` returns exit 0
+regardless of whether the image is reachable in ECR; the failure surfaces
+asynchronously and would silently leave the job green without this check.
+
 ## Usage
 
 ```yaml
