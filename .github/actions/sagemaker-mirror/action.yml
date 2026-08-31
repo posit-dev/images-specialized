@@ -16,6 +16,8 @@ inputs:
     description: >
       Private ECR registry host
       (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com).
+      The AWS region and account ID are derived from this value and used for
+      all ECR and SageMaker API calls, so they are always consistent.
     required: true
   target-repository:
     description: Repository name in the private ECR registry.
@@ -23,14 +25,11 @@ inputs:
   sagemaker-image-name:
     description: Name of the SageMaker catalog image to register versions against.
     default: positron-sagemaker
-  sagemaker-region:
-    description: AWS region for SageMaker API calls.
-    required: true
 
 outputs:
-  mirrored:
+  pushed:
     description: "'true' if a new version was pushed; 'false' if the tag already existed."
-    value: ${{ steps.check.outputs.mirrored }}
+    value: ${{ steps.check.outputs.pushed }}
 
 runs:
   using: composite
@@ -41,44 +40,70 @@ runs:
       env:
         TAG: ${{ inputs.tag }}
         REPO: ${{ inputs.target-repository }}
-        REGION: ${{ inputs.sagemaker-region }}
+        REGISTRY: ${{ inputs.target-ecr-registry }}
       run: |
-        if aws ecr describe-images \
-            --repository-name "$REPO" \
-            --image-ids "imageTag=$TAG" \
-            --region "$REGION" \
-            --output text \
-            > /dev/null 2>&1; then
+        # Derive the region from the registry hostname:
+        # <account>.dkr.ecr.<region>.amazonaws.com -> field 4
+        REGION=$(echo "$REGISTRY" | cut -d. -f4)
+
+        set +e
+        ERR=$(aws ecr describe-images \
+          --repository-name "$REPO" \
+          --image-ids "imageTag=$TAG" \
+          --region "$REGION" \
+          --output text 2>&1)
+        EXIT_CODE=$?
+        set -e
+
+        if [[ $EXIT_CODE -eq 0 ]]; then
           echo "Tag $TAG already in $REPO — nothing to do."
-          echo "mirrored=false" >> "$GITHUB_OUTPUT"
-        else
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
+        elif echo "$ERR" | grep -q "ImageNotFoundException"; then
           echo "Tag $TAG not found in $REPO — mirroring."
-          echo "mirrored=true" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::ECR check failed: $ERR"
+          exit 1
         fi
 
     - name: Login to Amazon ECR
-      if: steps.check.outputs.mirrored == 'true'
-      uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
+      if: steps.check.outputs.pushed == 'true'
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.target-ecr-registry }}
+      run: |
+        # Scope login to the target registry only, not every registry in the
+        # account. The account ID and region are parsed from the hostname:
+        # <account>.dkr.ecr.<region>.amazonaws.com
+        ACCOUNT_ID=$(echo "$REGISTRY" | cut -d. -f1)
+        REGION=$(echo "$REGISTRY" | cut -d. -f4)
+        aws ecr get-login-password --region "$REGION" \
+          | docker login --username AWS --password-stdin \
+              "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
 
     - name: Pull from public ECR, push to private ECR
-      if: steps.check.outputs.mirrored == 'true'
+      if: steps.check.outputs.pushed == 'true'
+      timeout-minutes: 30
       shell: bash
       env:
         SOURCE: ${{ inputs.source-image }}:${{ inputs.tag }}
         TARGET: ${{ inputs.target-ecr-registry }}/${{ inputs.target-repository }}:${{ inputs.tag }}
       run: |
+        # sagemaker-distribution is amd64-only; pull explicitly to avoid the
+        # host architecture being substituted on arm64 runners.
         docker pull --platform linux/amd64 "$SOURCE"
         docker tag "$SOURCE" "$TARGET"
         docker push "$TARGET"
 
     - name: Register SageMaker ImageVersion
-      if: steps.check.outputs.mirrored == 'true'
+      if: steps.check.outputs.pushed == 'true'
       shell: bash
       env:
         SAGEMAKER_IMAGE: ${{ inputs.sagemaker-image-name }}
         BASE_IMAGE: ${{ inputs.target-ecr-registry }}/${{ inputs.target-repository }}:${{ inputs.tag }}
-        REGION: ${{ inputs.sagemaker-region }}
+        REGISTRY: ${{ inputs.target-ecr-registry }}
       run: |
+        REGION=$(echo "$REGISTRY" | cut -d. -f4)
         aws sagemaker create-image-version \
           --image-name "$SAGEMAKER_IMAGE" \
           --base-image "$BASE_IMAGE" \
