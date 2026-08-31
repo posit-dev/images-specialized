@@ -66,20 +66,22 @@ runs:
           exit 1
         fi
 
-    - name: Login to Amazon ECR
-      if: steps.check.outputs.pushed == 'true'
+    - name: Parse registry
+      id: registry
       shell: bash
       env:
         REGISTRY: ${{ inputs.target-ecr-registry }}
       run: |
-        # Scope login to the target registry only, not every registry in the
-        # account. The account ID and region are parsed from the hostname:
-        # <account>.dkr.ecr.<region>.amazonaws.com
-        ACCOUNT_ID=$(echo "$REGISTRY" | cut -d. -f1)
-        REGION=$(echo "$REGISTRY" | cut -d. -f4)
-        aws ecr get-login-password --region "$REGION" \
-          | docker login --username AWS --password-stdin \
-              "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+        # Extract the account ID from the registry hostname so it can be
+        # passed to amazon-ecr-login, which scopes login to that account only.
+        # Hostname format: <account>.dkr.ecr.<region>.amazonaws.com
+        echo "account=$(echo "$REGISTRY" | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+
+    - name: Login to Amazon ECR
+      if: steps.check.outputs.pushed == 'true'
+      uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
+      with:
+        registries: ${{ steps.registry.outputs.account }}
 
     - name: Pull from public ECR, push to private ECR
       if: steps.check.outputs.pushed == 'true'
