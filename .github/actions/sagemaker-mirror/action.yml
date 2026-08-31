@@ -1,0 +1,85 @@
+name: Mirror positron-sagemaker to private ECR
+description: >
+  Pulls a specific tag of public.ecr.aws/posit/positron-sagemaker into a
+  private ECR repository and registers a SageMaker ImageVersion. Skips both
+  steps if the tag already exists in the private registry. Requires AWS
+  credentials to be configured by the calling workflow.
+
+inputs:
+  tag:
+    description: Version tag to mirror (e.g. 2026.09.0-124).
+    required: true
+  source-image:
+    description: Public ECR image URI without tag.
+    default: public.ecr.aws/posit/positron-sagemaker
+  target-ecr-registry:
+    description: >
+      Private ECR registry host
+      (e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com).
+    required: true
+  target-repository:
+    description: Repository name in the private ECR registry.
+    default: positron-sagemaker
+  sagemaker-image-name:
+    description: Name of the SageMaker catalog image to register versions against.
+    default: positron-sagemaker
+  sagemaker-region:
+    description: AWS region for SageMaker API calls.
+    required: true
+
+outputs:
+  mirrored:
+    description: "'true' if a new version was pushed; 'false' if the tag already existed."
+    value: ${{ steps.check.outputs.mirrored }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check if tag already in private ECR
+      id: check
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        REPO: ${{ inputs.target-repository }}
+        REGION: ${{ inputs.sagemaker-region }}
+      run: |
+        if aws ecr describe-images \
+            --repository-name "$REPO" \
+            --image-ids "imageTag=$TAG" \
+            --region "$REGION" \
+            --output text \
+            > /dev/null 2>&1; then
+          echo "Tag $TAG already in $REPO — nothing to do."
+          echo "mirrored=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "Tag $TAG not found in $REPO — mirroring."
+          echo "mirrored=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Login to Amazon ECR
+      if: steps.check.outputs.mirrored == 'true'
+      uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
+
+    - name: Pull from public ECR, push to private ECR
+      if: steps.check.outputs.mirrored == 'true'
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source-image }}:${{ inputs.tag }}
+        TARGET: ${{ inputs.target-ecr-registry }}/${{ inputs.target-repository }}:${{ inputs.tag }}
+      run: |
+        docker pull --platform linux/amd64 "$SOURCE"
+        docker tag "$SOURCE" "$TARGET"
+        docker push "$TARGET"
+
+    - name: Register SageMaker ImageVersion
+      if: steps.check.outputs.mirrored == 'true'
+      shell: bash
+      env:
+        SAGEMAKER_IMAGE: ${{ inputs.sagemaker-image-name }}
+        BASE_IMAGE: ${{ inputs.target-ecr-registry }}/${{ inputs.target-repository }}:${{ inputs.tag }}
+        REGION: ${{ inputs.sagemaker-region }}
+      run: |
+        aws sagemaker create-image-version \
+          --image-name "$SAGEMAKER_IMAGE" \
+          --base-image "$BASE_IMAGE" \
+          --region "$REGION"
