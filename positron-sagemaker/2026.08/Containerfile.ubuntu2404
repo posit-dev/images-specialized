@@ -127,7 +127,7 @@ RUN R_HOME_DIR="/opt/R/4.6.1/lib/R" && \
 # Jupyter R kernel, and we strip all kernelspecs below for a Positron-only
 # launcher. The IRkernel package stays installed (harmless) but registers no
 # launcher tile.
-RUN /opt/R/4.6.1/bin/R --vanilla -e 'install.packages(c("IRkernel", "tidyverse", "data.table", "shiny", "odbc", "DBI"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)'
+RUN /opt/R/4.6.1/bin/R --vanilla -e 'install.packages(c("IRkernel", "tidyverse", "data.table", "shiny", "odbc", "DBI", "paws"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)'
 
 
 # --- Quarto ----------------------------------------------------------------
