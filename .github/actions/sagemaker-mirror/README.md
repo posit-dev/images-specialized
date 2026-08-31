@@ -1,9 +1,15 @@
 # sagemaker-mirror
 
 Mirrors a specific tag of `public.ecr.aws/posit/positron-sagemaker` to a
-private Amazon ECR repository and registers a SageMaker ImageVersion. Both
-steps are skipped if the tag already exists in the private registry, so the
-action is safe to call on a schedule.
+private Amazon ECR repository and registers a SageMaker ImageVersion. Each
+step is skipped independently if it has already been done, so the action is
+safe to call on a schedule.
+
+The copy is skipped when the tag is in ECR. The registration is skipped when
+the tag is already an ImageVersion alias. Checking these separately matters:
+a tag can reach ECR and still have no ImageVersion, for example when an
+earlier run failed after the copy. A single ECR check would skip that tag on
+every later run and never register it.
 
 Uses `oras copy --recursive` to preserve the full OCI artifact tree,
 including the SOCI index that SageMaker Studio uses for lazy image loading.
@@ -49,7 +55,14 @@ role must allow.
 
 | Output | Description |
 |---|---|
-| `pushed` | `true` if a new version was pushed; `false` if the tag already existed. |
+| `copied` | `true` if the image was copied into ECR; `false` if it was already there. |
+| `registered` | `true` if a SageMaker ImageVersion was registered; `false` if the tag was already registered. |
+
+The tag is added as an ImageVersion alias after the version reaches
+`CREATED`, never at create time. An alias passed to `create-image-version`
+stays attached to a `CREATE_FAILED` version, where it can be neither removed
+nor reused, so the tag could not be registered again without deleting the
+failed version first.
 
 ## IAM permissions
 
@@ -87,7 +100,9 @@ The infrastructure that manages this role for the platform team is in
       "Action": [
         "sagemaker:CreateImageVersion",
         "sagemaker:DescribeImageVersion",
-        "sagemaker:ListImageVersions"
+        "sagemaker:ListAliases",
+        "sagemaker:ListImageVersions",
+        "sagemaker:UpdateImageVersion"
       ],
       "Resource": [
         "arn:aws:sagemaker:<region>:<account>:image/<sagemaker-image-name>",
