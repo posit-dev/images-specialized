@@ -76,7 +76,7 @@ jobs:
       - dev
 
     steps:
-      - uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe  # v1.2.2
+      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
@@ -211,7 +211,7 @@ jobs:
 
       - name: Login to Amazon ECR
         if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
-        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64  # v2.1.6
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd  # v2.1.7
 
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
