@@ -130,7 +130,7 @@ RUN R_HOME_DIR="{{ r.get_version_directory(Dependencies.R.0) }}/lib/R" && \
 # Jupyter R kernel, and we strip all kernelspecs below for a Positron-only
 # launcher. The IRkernel package stays installed (harmless) but registers no
 # launcher tile.
-{{ r.run_install_packages(Dependencies.R, packages = ["IRkernel", "tidyverse", "data.table", "shiny", "odbc", "DBI"], _os = r_os) }}
+{{ r.run_install_packages(Dependencies.R, packages = ["IRkernel", "tidyverse", "data.table", "shiny", "odbc", "DBI", "paws"], _os = r_os) }}
 
 # --- Quarto ----------------------------------------------------------------
 # Installed via the Posit Open apt repository (quarto.j2), not the GitHub CDN
