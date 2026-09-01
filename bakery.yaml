@@ -150,8 +150,8 @@ images:
           # Studio before it's promoted anywhere customer-facing. Requires the
           # `development` environment's AWS_ROLE secret to push (see
           # development-positron-sagemaker.yml).
-          - host: "935931255537.dkr.ecr.us-east-1.amazonaws.com"
-            repository: "positron-sagemaker"
+          - host: "935931255537.dkr.ecr.us-east-2.amazonaws.com"
+            repository: "positron-sagemaker-preview"
     versions:
       - name: 2026.08.2-4
         subpath: '2026.08'
