@@ -19,7 +19,7 @@ name: Development - Positron SageMaker
 #
 # Where the images go: bakery.yaml's devVersions block sets overrideRegistries,
 # so dev builds are tagged ONLY for ghcr.io/posit-dev/positron-sagemaker-preview
-# and the internal 935931255537.dkr.ecr.us-east-1.amazonaws.com/positron-sagemaker
+# and the internal 935931255537.dkr.ecr.us-east-2.amazonaws.com/positron-sagemaker-preview
 # repo. They can never reach the customer-facing public.ecr.aws repository. The
 # sagemaker-distribution base image still pulls anonymously from ECR Public,
 # exactly as it does in the production workflow's Build step, but the Push step
@@ -207,7 +207,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_ROLE }}
-          aws-region: us-east-1
+          aws-region: us-east-2
 
       - name: Login to Amazon ECR
         if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
