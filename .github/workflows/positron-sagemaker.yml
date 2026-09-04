@@ -294,3 +294,23 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --temp-registry "$TEMP_REGISTRY" \
             ./*-metadata.json
+
+      # Dispatch the mirror workflow with the exact tag just published.
+      # The mirror action is idempotent; the weekly schedule is a safe backstop.
+      - name: Get Platform app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ secrets.POSIT_PLATFORM_CLIENT_ID }}
+          private-key: ${{ secrets.POSIT_PLATFORM_PEM }}
+          repositories: platform-infra
+          permission-actions: write
+
+      - name: Dispatch mirror workflow
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          IMAGE_VERSION: ${{ matrix.img.version }}
+        run: |
+          gh workflow run positron-sagemaker-mirror.yml \
+            --repo posit-dev/platform-infra \
+            --field tag="$IMAGE_VERSION"
