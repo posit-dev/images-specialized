@@ -81,24 +81,28 @@ runs:
         # describe-image-version --alias cannot be used here: it returns
         # AccessDeniedException for a missing alias, which is indistinguishable
         # from a real permissions problem.
+        # list-aliases returns exit 0 with an empty list when the alias does
+        # not exist — only a non-zero exit signals a real error. Query the
+        # count directly so the result is unambiguous.
         set +e
-        ERR=$(aws sagemaker list-aliases \
+        OUT=$(aws sagemaker list-aliases \
           --image-name "$SAGEMAKER_IMAGE" \
           --alias "$TAG" \
           --region "$REGION" \
+          --query 'length(SageMakerImageVersionAliases)' \
           --output text 2>&1)
         EXIT_CODE=$?
         set -e
 
-        if [[ $EXIT_CODE -eq 0 ]]; then
+        if [[ $EXIT_CODE -ne 0 ]]; then
+          echo "::error::SageMaker alias check failed: $OUT"
+          exit 1
+        elif [[ "$OUT" -gt 0 ]]; then
           echo "Tag $TAG already registered against $SAGEMAKER_IMAGE — no registration needed."
           echo "register=false" >> "$GITHUB_OUTPUT"
-        elif echo "$ERR" | grep -q "ResourceNotFound"; then
+        else
           echo "Tag $TAG not registered against $SAGEMAKER_IMAGE — registering."
           echo "register=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "::error::SageMaker alias check failed: $ERR"
-          exit 1
         fi
 
     - name: Parse registry
