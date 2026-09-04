@@ -153,8 +153,8 @@ images:
           - host: "935931255537.dkr.ecr.us-east-2.amazonaws.com"
             repository: "positron-sagemaker-preview"
     versions:
-      - name: 2026.08.2-4
-        subpath: '2026.08'
+      - name: 2026.09.0-256
+        subpath: '2026.09'
         latest: true
         os:
           - name: Ubuntu 24.04
