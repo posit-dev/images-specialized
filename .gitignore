@@ -170,3 +170,4 @@ cython_debug/
 
 # Claude
 docs/superpowers
+.worktrees
