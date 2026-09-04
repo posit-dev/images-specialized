@@ -124,13 +124,13 @@ jobs:
             bakery remove version positron-sagemaker "$OLD_VERSION"
           fi
 
-      # Computed from the working tree rather than `bakery create version
-      # --diff-against`, since the same-edition patch path above overwrites
-      # the old version in place and leaves no second version to diff against.
+      # Stage the generated files so edition bumps include the new (initially
+      # untracked) version and Git can detect the old version as a rename.
       - name: Capture rendered diff
         if: steps.positron.outputs.update_needed == 'true'
         run: |
-          git diff -- positron-sagemaker > "$RUNNER_TEMP/diff-positron-sagemaker.md" || true
+          git add -A -- positron-sagemaker
+          git diff --cached --find-renames -- positron-sagemaker > "$RUNNER_TEMP/diff-positron-sagemaker.md" || true
 
       - name: Create pull request
         if: steps.positron.outputs.update_needed == 'true'
