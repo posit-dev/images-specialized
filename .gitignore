@@ -3,6 +3,7 @@ results
 .dev-*
 bakery-bake.json
 .bakery-bake.json
+.worktrees/
 
 ### Python template
 # Byte-compiled / optimized / DLL files

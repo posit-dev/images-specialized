@@ -148,6 +148,12 @@ jobs:
           BRANCH="positron-update-${NEW_VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # actions/checkout only fetches main, so git has no local record of
+          # this branch's remote tip. Without it, force-with-lease assumes
+          # the branch must not exist yet and rejects the push if a prior
+          # run already created it.
+          git -c "http.https://github.com/.extraheader=$AUTH_HEADER" fetch origin "$BRANCH" 2>/dev/null || true
           git checkout -B "$BRANCH"
           git add -A
           git commit -m "Bump Positron to ${NEW_VERSION}"
