@@ -63,11 +63,7 @@ jobs:
             exit 1
           fi
 
-          # Drop the build number (the part after the last '-'). The public
-          # image publishes both tags for the same content, so pulling by
-          # the shorter one is equivalent, and the private mirror gets a
-          # stable per-patch name instead of a new one per build.
-          echo "tag=${TAG%-*}" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v6.2.3
