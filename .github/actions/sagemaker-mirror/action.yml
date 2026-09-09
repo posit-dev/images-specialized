@@ -81,15 +81,18 @@ runs:
         # describe-image-version --alias cannot be used here: it returns
         # AccessDeniedException for a missing alias, which is indistinguishable
         # from a real permissions problem.
-        # list-aliases returns exit 0 with an empty list when the alias does
-        # not exist — only a non-zero exit signals a real error. Query the
-        # count directly so the result is unambiguous.
+        # Filtering list-aliases with --alias "$TAG" is also unusable: AWS
+        # throws ResourceNotFound when that exact alias does not exist yet
+        # (https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ListAliases.html#API_ListAliases_Errors),
+        # which is the normal case for a brand-new tag, not an error. List
+        # every alias for the image instead and count matches client-side —
+        # a ResourceNotFound here means the image itself is missing, a real
+        # problem worth failing on.
         set +e
         OUT=$(aws sagemaker list-aliases \
           --image-name "$SAGEMAKER_IMAGE" \
-          --alias "$TAG" \
           --region "$REGION" \
-          --query 'length(SageMakerImageVersionAliases)' \
+          --query "length(SageMakerImageVersionAliases[?@=='${TAG}'])" \
           --output text 2>&1)
         EXIT_CODE=$?
         set -e
@@ -128,7 +131,6 @@ runs:
 
     - name: Copy from public ECR to private ECR
       if: steps.check.outputs.copy == 'true'
-      timeout-minutes: 30
       shell: bash
       env:
         SOURCE: ${{ inputs.source-image }}:${{ inputs.tag }}
