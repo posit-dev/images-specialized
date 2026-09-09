@@ -76,7 +76,7 @@ jobs:
           aws-region: us-east-2
 
       - name: Mirror
-        uses: ./.github/actions/sagemaker-mirror
+        uses: ./.github/actions/sagemaker-mirror  # zizmor: ignore[self-repository] actionlint doesn't support $/ yet, see #95
         with:
           tag: ${{ steps.resolve.outputs.tag }}
           target-ecr-registry: 935931255537.dkr.ecr.us-east-2.amazonaws.com
