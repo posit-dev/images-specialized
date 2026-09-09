@@ -219,6 +219,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      actions: write
     needs:
       - matrix
       - build
@@ -294,3 +295,15 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --temp-registry "$TEMP_REGISTRY" \
             ./*-metadata.json
+
+      # Same-repo dispatch with the tag just published. Passing it directly
+      # avoids relying on public ECR to immediately list a tag this same
+      # job just pushed; the mirror workflow's own discovery step is a
+      # backstop for when no tag is given (schedule, manual dispatch).
+      # Redundant dispatches (e.g. one per matrix entry) are harmless: the
+      # action skips tags already mirrored.
+      - name: Dispatch mirror workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_VERSION: ${{ matrix.img.version }}
+        run: gh workflow run positron-sagemaker-mirror.yml --field tag="$IMAGE_VERSION"
