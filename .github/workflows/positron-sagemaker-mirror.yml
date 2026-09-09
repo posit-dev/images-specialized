@@ -1,0 +1,78 @@
+name: Mirror positron-sagemaker
+
+# Copies the latest public.ecr.aws/posit/positron-sagemaker tag to the private
+# ECR repo and registers a SageMaker ImageVersion. Dispatched by the Positron
+# SageMaker build workflow after a production publish, weekly as a backstop,
+# and on manual dispatch.
+
+on:
+  schedule:
+    # Monday 09:00 UTC. After the Sunday rebuild (03:45 UTC).
+    - cron: "0 9 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >
+          Version tag to mirror (e.g. 2026.09.0-124).
+          Omit to mirror the latest published tag.
+        required: false
+        type: string
+
+jobs:
+  mirror:
+    name: Mirror positron-sagemaker
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup ORAS
+        if: inputs.tag == ''
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d  # v2.0.1
+
+      - name: Discover latest published tag
+        if: inputs.tag == ''
+        id: discover
+        run: |
+          TAG=$(oras repo tags public.ecr.aws/posit/positron-sagemaker \
+            | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]+-[0-9]+$' \
+            | sort -V | tail -1)
+          if [[ -z "$TAG" ]]; then
+            echo "::error::Could not discover latest tag from public ECR."
+            exit 1
+          fi
+          echo "Discovered latest tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve tag
+        id: resolve
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          DISCOVERED_TAG: ${{ steps.discover.outputs.tag }}
+        run: |
+          TAG="${DISPATCH_TAG:-$DISCOVERED_TAG}"
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No tag provided and discovery returned nothing."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.SAGEMAKER_MIRROR_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Mirror
+        uses: ./.github/actions/sagemaker-mirror  # zizmor: ignore[self-repository] actionlint doesn't support $/ yet
+        with:
+          tag: ${{ steps.resolve.outputs.tag }}
+          target-ecr-registry: 935931255537.dkr.ecr.us-east-2.amazonaws.com
