@@ -78,21 +78,44 @@ USER root
 # All plain Ubuntu-repo packages the toolchain needs, installed in a single
 # early layer so there is exactly one apt-get update for them and downstream
 # blocks (R, Pro Drivers, AWS Toolkit) do not each re-run apt. Grouped here:
-#   * libzmq3-dev, libuv1t64, libwebpmux3 — SYSTEM libs the P3M binary R
-#     packages link against (see the R block for the full rationale). P3M ships
-#     prebuilt .so files, and a missing lib is invisible at build time — it only
-#     fails at RUNTIME with "unable to load shared object". libuv1t64 backs `fs`
-#     (libuv.so.1) and libwebpmux3 backs `ragg` (libwebpmux.so.3); the `t64`
-#     suffix is Ubuntu 24.04 (noble)'s 64-bit time_t rename of libuv1. libuv.so.1
-#     DOES exist in /opt/conda/lib, but R lives outside conda at /opt/R and must
-#     not have conda's lib dir on its linker path (ABI conflicts) — install the
-#     real system package instead.
+#   * libzmq3-dev, libuv1t64, libwebpmux3, libmagick++-6.q16-9t64 — SYSTEM libs
+#     the P3M binary R packages link against (see the R block for the full
+#     rationale). P3M ships prebuilt .so files, and a missing lib is invisible at
+#     build time — it only fails at RUNTIME with "unable to load shared object".
+#     libuv1t64 backs `fs` (libuv.so.1) and libwebpmux3 backs `ragg`
+#     (libwebpmux.so.3); the `t64` suffix is Ubuntu 24.04 (noble)'s 64-bit time_t
+#     rename of libuv1. libuv.so.1 DOES exist in /opt/conda/lib, but R lives
+#     outside conda at /opt/R and must not have conda's lib dir on its linker
+#     path (ABI conflicts) — install the real system package instead.
+#
+#     libmagick++-6.q16-9t64 backs `magick`, which is a hard Imports dependency
+#     of the `commons` package (posit-dev/commons) — its R/plot-output.R calls
+#     image_read/image_resize/image_write to post-process every plot an agent
+#     renders. Without it, `commons` installs and loads fine (magick's namespace
+#     is only loaded lazily, at first plot) and then every plotting run_r call
+#     fails with "libMagick++-6.Q16.so.9: cannot open shared object file".
+#     The runtime lib is deliberately what we install, NOT libmagick++-dev:
+#     P3M serves a prebuilt magick.so, so the headers are never needed, and the
+#     -dev chain pulls build-essential/g++ and ~380 packages. gsfonts, the other
+#     sysreq P3M lists for magick, is only for ImageMagick's text/PostScript
+#     rendering — the read/resize/write path commons uses does not touch it
+#     (the binary reports "Disabled features: ... ghostscript"). Verified by
+#     installing the P3M magick binary on bare noble with only this package:
+#     ldd resolves libMagick++/libMagickWand/libMagickCore and the commons
+#     round-trip succeeds. Like libuv1t64, this is the `t64` package; the
+#     un-suffixed libmagick++-6.q16-9 is only a Provides alias for it.
+#
+#     NOTE: this is the first `universe` package this image installs — every
+#     other one above is in `main`. That resolves because the base image enables
+#     universe (sagemaker-distribution's own Dockerfile apt-installs `mandoc`
+#     and `krb5-user`, both universe) and deliberately does NOT clear
+#     /var/lib/apt/lists so images built on top can still apt-get install.
 #   * unixodbc, unixodbc-dev — the SYSTEM unixODBC driver manager the Posit
 #     Professional Drivers use (they do not bundle one). Also what provides
 #     libodbc.so.2 for the R `odbc` package's goss drift check.
 #   * unzip — used by the AWS Toolkit layer to unpack the VSIX (kept out of that
 #     volatile layer so a toolkit version bump never re-runs apt).
-RUN {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "unixodbc", "unixodbc-dev", "unzip"]) | trim | indent(4) }}
+RUN {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "libmagick++-6.q16-9t64", "unixodbc", "unixodbc-dev", "unzip"]) | trim | indent(4) }}
 
 # --- R via r.j2 (rstd.io/r-install) + Posit Package Manager (binary CRAN) --
 # r.j2 does not use rig at all — its install() macro runs the same

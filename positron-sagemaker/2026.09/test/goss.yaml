@@ -94,6 +94,37 @@ command:
       echo "OK: all R package shared libraries resolve"
     exit-status: 0
 
+  # --- System libs for R packages users install themselves --------------------
+  # The check above only scans $(R RHOME)/library -- the SYSTEM R library, i.e.
+  # the packages this image installs. It is blind to packages a user installs
+  # into their own library, which on SageMaker is the persistent home at
+  # /home/sagemaker-user/R/x86_64-pc-linux-gnu-library/4.6. That blind spot is
+  # exactly how the `magick` gap shipped: nothing in the system library links
+  # against libMagick++, so the image tested clean while every plot an agent
+  # rendered through `commons` died at runtime on
+  # "libMagick++-6.Q16.so.9: cannot open shared object file".
+  #
+  # `commons` (posit-dev/commons) Imports `magick`, so assert the SONAMEs its
+  # P3M binary needs are resolvable image-wide. ldconfig -p is the right probe
+  # precisely BECAUSE there is no R package here to run ldd against -- this
+  # guards a lib installed for a package the image does not itself ship.
+  # Counted with awk, not `grep -c`, for the same pipefail reason called out
+  # above: grep exits 1 when it matches nothing -- the very case this check
+  # exists to report -- which under `set -o pipefail` would abort the exec
+  # before the diagnostic below could print. awk always exits 0.
+  imagemagick-system-libraries-resolve:
+    exec: |
+      found="$(ldconfig -p \
+              | awk '/libMagick(\+\+|Wand|Core)-6\.Q16\.so/ {n++} END {print n+0}')"
+      if [ "$found" -lt 3 ]; then
+        echo "ERROR: expected libMagick++/libMagickWand/libMagickCore in ldconfig, found $found" >&2
+        echo "Install libmagick++-6.q16-9t64 in the System packages RUN block." >&2
+        ldconfig -p | grep -i magick >&2 || true
+        exit 1
+      fi
+      echo "OK: ImageMagick 6 Q16 shared libraries resolve ($found found)"
+    exit-status: 0
+
   # --- No Jupyter kernel exists (Positron-only launcher) ---------------------
   # Mirrors the build-time assertion in the Containerfile: every kernels/ dir
   # under Jupyter's data paths was removed, and the synthetic "python3" kernel
