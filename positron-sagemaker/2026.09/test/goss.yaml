@@ -108,6 +108,10 @@ command:
   # P3M binary needs are resolvable image-wide. ldconfig -p is the right probe
   # precisely BECAUSE there is no R package here to run ldd against -- this
   # guards a lib installed for a package the image does not itself ship.
+  # `ldconfig` is safe to call bare here: the base image's PATH includes /sbin
+  # and /usr/sbin, and `-p` only reads /etc/ld.so.cache, which is world-readable
+  # -- both verified, so this still works as $MAMBA_USER, which is who dgoss
+  # execs as (the Containerfile ends with `USER $MAMBA_USER`).
   # Counted with awk, not `grep -c`, for the same pipefail reason called out
   # above: grep exits 1 when it matches nothing -- the very case this check
   # exists to report -- which under `set -o pipefail` would abort the exec
