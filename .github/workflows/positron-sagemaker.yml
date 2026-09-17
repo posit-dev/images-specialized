@@ -57,7 +57,7 @@ jobs:
           allowed-skips: build, merge
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
-        uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
+        uses: posit-dev/images-shared/.github/actions/slack-build-notify@v0
         with:
           result: ${{ steps.alls-green.outcome }}
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       - name: Images
         id: images
@@ -132,10 +132,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup bakery
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       - name: Setup goss
-        uses: "posit-dev/images-shared/setup-goss@main"
+        uses: "posit-dev/images-shared/setup-goss@v0"
 
       # Temp images are pushed to ghcr (GITHUB_TOKEN) only; the final push to the
       # customer-facing public ECR happens in the `merge` job, which owns the
@@ -247,7 +247,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup bakery
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       # Log in to the temp registry (ghcr, pull source) and both final
       # registries (ghcr + public ECR, push destinations). oras and soci read
@@ -274,7 +274,7 @@ jobs:
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d  # v2.0.1
 
       - name: Setup SOCI
-        uses: "posit-dev/images-shared/setup-soci@main"
+        uses: "posit-dev/images-shared/setup-soci@v0"
 
       - name: Download metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1

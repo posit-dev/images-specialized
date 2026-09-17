@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: Install bakery
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       - name: Parse version
         id: parse

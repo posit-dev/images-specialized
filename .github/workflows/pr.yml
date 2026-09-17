@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: posit-dev/images-shared/.github/workflows/bakery-build-pr.yml@main
+    uses: posit-dev/images-shared/.github/workflows/bakery-build-pr.yml@v0
     with:
       dev-versions: "exclude"
       matrix-versions: "exclude"
