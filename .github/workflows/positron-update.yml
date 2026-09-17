@@ -40,7 +40,7 @@ jobs:
           persist-credentials: false
 
       - name: Install bakery
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       # Compares the CDN's newest Positron release against what's pinned in
       # bakery.yaml. The pwb (Workbench) release manifest is used rather than

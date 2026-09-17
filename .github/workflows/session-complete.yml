@@ -57,7 +57,7 @@ jobs:
           allowed-skips: build
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
-        uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
+        uses: posit-dev/images-shared/.github/actions/slack-build-notify@v0
         with:
           result: ${{ steps.alls-green.outcome }}
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -79,7 +79,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       - name: Images
         id: images
@@ -133,10 +133,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup bakery
-        uses: "posit-dev/images-shared/setup-bakery@main"
+        uses: "posit-dev/images-shared/setup-bakery@v0"
 
       - name: Setup goss
-        uses: "posit-dev/images-shared/setup-goss@main"
+        uses: "posit-dev/images-shared/setup-goss@v0"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
