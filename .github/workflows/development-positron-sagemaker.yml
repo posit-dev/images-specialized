@@ -254,3 +254,47 @@ jobs:
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS"
+
+      # Preview builds are already in private ECR; register the pushed tag
+      # without copying a release image from public ECR.
+      - name: Register preview image version
+        if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
+        env:
+          TAG: ${{ matrix.img.version }}
+          REPO: positron-sagemaker-preview
+          REGISTRY: 935931255537.dkr.ecr.us-east-2.amazonaws.com
+          REGION: us-east-2
+        run: |
+          aws ecr describe-images --repository-name "$REPO" \
+            --image-ids "imageTag=$TAG" --region "$REGION" \
+            --query 'imageDetails[0].imageDigest' --output text >/dev/null
+
+          ALIASES=$(aws sagemaker list-aliases --image-name "$REPO" \
+            --region "$REGION" --query 'SageMakerImageVersionAliases' --output json)
+          if jq -e --arg tag "$TAG" 'index($tag) != null' <<<"$ALIASES" >/dev/null; then
+            echo "Tag $TAG is already registered against $REPO."
+            exit 0
+          fi
+
+          VERSION=$(aws sagemaker create-image-version --image-name "$REPO" \
+            --base-image "$REGISTRY/$REPO:$TAG" --region "$REGION" \
+            --query 'ImageVersionArn' --output text | awk -F/ '{print $NF}')
+
+          STATUS=''
+          for _ in $(seq 30); do
+            read -r STATUS REASON < <(aws sagemaker describe-image-version \
+              --image-name "$REPO" --version-number "$VERSION" --region "$REGION" \
+              --query '[ImageVersionStatus, FailureReason]' --output text)
+            [[ "$STATUS" == 'CREATED' ]] && break
+            [[ "$STATUS" == 'CREATE_FAILED' ]] && { echo "::error::ImageVersion $VERSION failed: $REASON"; exit 1; }
+            sleep 10
+          done
+          if [[ "$STATUS" != 'CREATED' ]]; then
+            echo "::error::Timed out waiting for ImageVersion $VERSION (last status: $STATUS)"
+            exit 1
+          fi
+
+          # A failed version cannot release its alias; add it only after success.
+          aws sagemaker update-image-version --image-name "$REPO" \
+            --version-number "$VERSION" --aliases-to-add "$TAG" --region "$REGION" \
+            --query 'ImageVersionArn' --output text
