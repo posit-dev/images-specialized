@@ -67,6 +67,7 @@ version_is_referenced() {
       [[ "$app_arn" == "$version_arn" ]] && return 0
     done
 
+    # shellcheck disable=SC2016  # backticks are JMESPath literal syntax, not shell command substitution
     apps=$(aws sagemaker list-apps --domain-id "$domain" --region "$REGION" \
       --query 'Apps[?AppType==`JupyterLab`].{space:SpaceName,user:UserProfileName,name:AppName}' \
       --output json) || exit 1

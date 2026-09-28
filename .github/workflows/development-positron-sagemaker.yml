@@ -60,6 +60,13 @@ concurrency:
   group: positron-sagemaker-development-image-build
   cancel-in-progress: true
 
+# Matches images-shared's build workflows: GitHub's default Linux shell is
+# `bash -e`, which leaves pipefail off, so a failing first stage of a pipeline
+# is silently swallowed. `shell: bash` is `bash --noprofile --norc -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   ci:
     name: CI
@@ -258,7 +265,9 @@ jobs:
             --matrix-versions "$MATRIX_VERSIONS"
 
       # Preview builds are already in private ECR; register the pushed tag
-      # without copying a release image from public ECR.
+      # without copying a release image from public ECR. A rebuilt daily
+      # reuses the same tag with a new digest, so the alias is repointed by
+      # comparing BaseImage digests instead of skipping once ever registered.
       - name: Register preview image version
         if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
         env:
@@ -267,19 +276,31 @@ jobs:
           REGISTRY: 935931255537.dkr.ecr.us-east-2.amazonaws.com
           REGION: us-east-2
         run: |
-          aws ecr describe-images --repository-name "$REPO" \
+          DIGEST=$(aws ecr describe-images --repository-name "$REPO" \
             --image-ids "imageTag=$TAG" --region "$REGION" \
-            --query 'imageDetails[0].imageDigest' --output text >/dev/null
+            --query 'imageDetails[0].imageDigest' --output text)
+          BASE_IMAGE="$REGISTRY/$REPO@$DIGEST"
 
+          # list-aliases only proves $TAG is registered somewhere; it never
+          # maps an alias back to a version. describe-image-version --alias
+          # returns AccessDeniedException for a nonexistent alias -- the same
+          # as a real permissions failure (see sagemaker-mirror/action.yml) --
+          # so only call it once list-aliases has confirmed the alias exists.
+          OLD_VERSION=''
           ALIASES=$(aws sagemaker list-aliases --image-name "$REPO" \
             --region "$REGION" --query 'SageMakerImageVersionAliases' --output json)
           if jq -e --arg tag "$TAG" 'index($tag) != null' <<<"$ALIASES" >/dev/null; then
-            echo "Tag $TAG is already registered against $REPO."
-            exit 0
+            read -r OLD_VERSION OLD_BASE_IMAGE < <(aws sagemaker describe-image-version \
+              --image-name "$REPO" --alias "$TAG" --region "$REGION" \
+              --query '[Version, BaseImage]' --output text)
+            if [[ "$OLD_BASE_IMAGE" == "$BASE_IMAGE" ]]; then
+              echo "Tag $TAG is already registered against $BASE_IMAGE."
+              exit 0
+            fi
           fi
 
           VERSION=$(aws sagemaker create-image-version --image-name "$REPO" \
-            --base-image "$REGISTRY/$REPO:$TAG" --region "$REGION" \
+            --base-image "$BASE_IMAGE" --region "$REGION" \
             --query 'ImageVersionArn' --output text | awk -F/ '{print $NF}')
 
           STATUS=''
@@ -296,7 +317,14 @@ jobs:
             exit 1
           fi
 
-          # A failed version cannot release its alias; add it only after success.
+          # A failed version cannot release its alias; move the alias only
+          # after the new version is confirmed CREATED, so a failed rebuild
+          # never leaves $TAG unregistered.
+          if [[ -n "$OLD_VERSION" ]]; then
+            aws sagemaker update-image-version --image-name "$REPO" \
+              --version-number "$OLD_VERSION" --aliases-to-delete "$TAG" --region "$REGION" \
+              --query 'ImageVersionArn' --output text
+          fi
           aws sagemaker update-image-version --image-name "$REPO" \
             --version-number "$VERSION" --aliases-to-add "$TAG" --region "$REGION" \
             --query 'ImageVersionArn' --output text
@@ -304,7 +332,10 @@ jobs:
   cleanup-preview-versions:
     name: Clean up expired preview versions
     # ECR expires images independently of CI; run even when the build fails.
-    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.push) }}
+    # !cancelled(), not always(): always() stays true even when this run was
+    # cancelled (e.g. superseded by cancel-in-progress), which would run this
+    # destructive job against AWS alongside the run that replaced it.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.push) }}
     needs: dev
     runs-on: ubuntu-latest
     permissions:
@@ -325,4 +356,4 @@ jobs:
           aws-region: us-east-2
 
       - name: Remove preview versions without ECR images
-        run: bash .github/scripts/cleanup-preview-sagemaker-versions.sh
+        run: .github/scripts/cleanup-preview-sagemaker-versions.sh
