@@ -74,12 +74,14 @@ jobs:
     timeout-minutes: 10
     needs:
       - dev
+      - cleanup-preview-versions
 
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
+          allowed-skips: cleanup-preview-versions
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: posit-dev/images-shared/.github/actions/slack-build-notify@main
@@ -298,3 +300,29 @@ jobs:
           aws sagemaker update-image-version --image-name "$REPO" \
             --version-number "$VERSION" --aliases-to-add "$TAG" --region "$REGION" \
             --query 'ImageVersionArn' --output text
+
+  cleanup-preview-versions:
+    name: Clean up expired preview versions
+    # ECR expires images independently of CI; run even when the build fails.
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.push) }}
+    needs: dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v6.2.4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-2
+
+      - name: Remove preview versions without ECR images
+        run: bash .github/scripts/cleanup-preview-sagemaker-versions.sh
