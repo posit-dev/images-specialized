@@ -55,7 +55,7 @@ jobs:
       # largest one. session-complete is ~15 GB (std) / ~13 GB (min) built, on
       # top of a ~7 GB base pull, and the job builds with --load before testing,
       # so it needs materially more disk than the other images here.
-      amd64-builder: "ubuntu-latest-8x"
+      amd64-builder: "ubuntu-latest-amd64-8-core"
 
   zizmor:
     name: Zizmor
