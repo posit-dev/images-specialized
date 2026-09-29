@@ -1,4 +1,4 @@
 self-hosted-runner:
   labels:
-    - ubuntu-latest-4x
-    - ubuntu-latest-8x
+    - ubuntu-latest-amd64-4-core
+    - ubuntu-latest-amd64-8-core
