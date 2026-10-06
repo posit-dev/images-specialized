@@ -195,6 +195,21 @@ jobs:
       - name: Setup goss
         uses: "posit-dev/images-shared/setup-goss@v0"
 
+      - name: Filter Steps
+        id: filter-steps
+        env:
+          PUSH_IMAGE: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
+          HAS_WIZ_AUTH: ${{ secrets.WIZ_CLIENT_ID != '' }}
+        run: |
+          {
+            echo "push=$PUSH_IMAGE"
+            echo "wiz-auth=$HAS_WIZ_AUTH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup wizcli
+        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        uses: "posit-dev/images-shared/setup-wizcli@v0"
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
@@ -235,7 +250,32 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
+
+      - name: Scan
+        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        continue-on-error: true
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+          WIZ_POLICY_ID: ${{ secrets.WIZ_POLICY_ID }}
+          WIZ_PROJECT_ID: ${{ secrets.WIZ_PROJECT_ID }}
+        run: |
+          POLICY_FLAGS=()
+          [[ -n "$WIZ_POLICY_ID" ]] && POLICY_FLAGS=(--policies "$WIZ_POLICY_ID")
+          PROJECT_FLAGS=()
+          [[ -n "$WIZ_PROJECT_ID" ]] && PROJECT_FLAGS=(--projects "$WIZ_PROJECT_ID")
+          WIZCLI_PATH=${GITHUB_WORKSPACE}/tools/wizcli \
+          bakery wizcli scan \
+            --image-name "^${IMAGE_NAME}$" \
+            --image-version "$IMAGE_VERSION" \
+            --image-platform linux/amd64 \
+            --dev-versions "$DEV_VERSIONS" \
+            --matrix-versions "$MATRIX_VERSIONS" \
+            "${POLICY_FLAGS[@]}" \
+            "${PROJECT_FLAGS[@]}" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
 
       - name: Push
         # Dev images are pushed only from main. Scheduled rebuilds always push —
