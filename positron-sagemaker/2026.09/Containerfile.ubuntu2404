@@ -310,9 +310,9 @@ RUN mkdir -p /opt/positron-server \
 # The tarball is published (as an uncompressed tar, despite the .tar.gz name)
 # at <base-url>/licensing-clients-aws-sagemaker-<version>.tar.gz. The client is
 # x86-64 only, which matches this image's linux/amd64 platform.
-ARG LICENSE_MANAGER_CLIENT_VERSION="1.2.6-89"
+ARG LICENSE_MANAGER_CLIENT_VERSION="1.3.0-100"
 ARG LICENSE_MANAGER_CLIENT_BASE_URL="https://cdn.posit.co/platform/marketplace/license/aws-sagemaker"
-ARG LICENSE_MANAGER_CLIENT_SHA256="37edcffb36a81185cd265f5e2f318e2205c8fb002dcd8538f59b7bba012b41d6"
+ARG LICENSE_MANAGER_CLIENT_SHA256="a5c149328deebb97286a5d5654996adc09257e827c4096e8bde62ef078db64f1"
 RUN url="${LICENSE_MANAGER_CLIENT_BASE_URL}/licensing-clients-aws-sagemaker-${LICENSE_MANAGER_CLIENT_VERSION}.tar.gz" \
     && curl -fsSL "${url}" -o /tmp/lm.tar.gz \
     && echo "${LICENSE_MANAGER_CLIENT_SHA256}  /tmp/lm.tar.gz" | sha256sum -c - \
