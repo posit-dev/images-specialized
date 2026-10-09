@@ -166,13 +166,13 @@ images:
             version: 1.10.19
           - dependency: R
             version: 4.6.1
-  - name: session-complete
-    displayName: "Posit Workbench Session Complete"
-    description: "A Posit Workbench session image with a full Workbench installation
-      layered on, so the session components ship in the image and sessions run without
-      a workbench-session-init init container alongside them. Mirrors the Workbench
-      installation used by the r-session-complete image on a workbench-session base."
-    documentationUrl: "https://docs.posit.co/ide/server-pro/integration/kubernetes.html"
+  - name: rstudio-sagemaker
+    displayName: "RStudio on SageMaker"
+    description: "A Posit Workbench session image for RStudio on Amazon SageMaker AI.
+      A workbench-session image with a full Workbench installation layered on, so
+      the session components ship in the image, plus the Java, R, Python and
+      environment configuration SageMaker needs."
+    documentationUrl: "https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html"
     variants:
       - name: Standard
         extension: std
@@ -196,16 +196,14 @@ images:
       # pin for the rstudio-server package in scripts/install_workbench.sh.
       # It is not an R/Python matrix coordinate -- those come from whichever
       # workbench-session base build the OS-qualified tag resolves to.
-      - name: 2026.09.0+174.pro3
-        subpath: '2026.09'
-        latest: true
-        os:
-          - name: Ubuntu 26.04
-            primary: true
-            platforms:
-              - linux/amd64
+      #
+      # PINNED: this must be the Workbench release Amazon SageMaker AI
+      # currently supports for RStudio. It is deliberately excluded from the
+      # automated Release workflow (.github/workflows/release.yml) and is only
+      # moved by hand when SageMaker adopts a new release.
       - name: 2026.08.2+200.pro1
         subpath: '2026.08'
+        latest: true
         os:
           - name: Ubuntu 26.04
             primary: true

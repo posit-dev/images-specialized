@@ -40,9 +40,9 @@
 # /usr/lib/rstudio-server/bin/quarto for the session components to use
 # internally; PATH is left pointing at the pinned one.
 
-ARG WORKBENCH_SESSION_IMAGE=ghcr.io/posit-dev/workbench-session:ubuntu-26.04-std
+ARG WORKBENCH_SESSION_IMAGE=ghcr.io/posit-dev/workbench-session:ubuntu-26.04-min
 FROM ${WORKBENCH_SESSION_IMAGE}
-LABEL org.opencontainers.image.base.name="ghcr.io/posit-dev/workbench-session:ubuntu-26.04-std"
+LABEL org.opencontainers.image.base.name="ghcr.io/posit-dev/workbench-session:ubuntu-26.04-min"
 
 ### ARG declarations ###
 ARG DEBIAN_FRONTEND=noninteractive
@@ -91,7 +91,7 @@ RUN apt-get update -yqq && \
 # per-distro subdirectories (bin/noble/rsession). Anything reading these paths
 # has to expect the flat form.
 ARG WORKBENCH_VERSION="2026.08.2+200.pro1"
-COPY --chmod=0755 session-complete/2026.08/scripts/install_workbench.sh /tmp/install_workbench.sh
+COPY --chmod=0755 rstudio-sagemaker/2026.08/scripts/install_workbench.sh /tmp/install_workbench.sh
 RUN \
     /tmp/install_workbench.sh && \
     rm -f /tmp/install_workbench.sh

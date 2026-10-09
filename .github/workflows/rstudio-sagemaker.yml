@@ -1,4 +1,4 @@
-name: Session Complete
+name: RStudio SageMaker
 on:
   workflow_dispatch:
 
@@ -86,7 +86,7 @@ jobs:
         env:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
-          IMAGE_NAME: "session-complete"
+          IMAGE_NAME: "rstudio-sagemaker"
           # Change-aware builds, matching bakery-build-native.yml. Only set on
           # push events, so schedule/workflow_dispatch still build the full
           # matrix. github.event.before is also populated on pull_request
