@@ -1,4 +1,4 @@
-name: Session Complete
+name: RStudio SageMaker
 on:
   workflow_dispatch:
 
@@ -45,16 +45,21 @@ jobs:
     needs:
       - matrix
       - build
+      - merge
 
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
-          # build is skipped when the change-aware matrix is empty (a push to
-          # main that didn't touch this image). `matrix` is in needs above so a
-          # failure there still blocks -- this only forgives a genuine no-op.
-          allowed-skips: build
+          # Two expected skips, neither of which should fail the required check:
+          #   * merge only runs on the push/schedule paths, so it skips on a
+          #     workflow_dispatch from a branch other than main.
+          #   * build and merge both skip when the change-aware matrix is empty
+          #     (a push to main that didn't touch this image).
+          # `matrix` is in needs above so a failure there still blocks; this
+          # only forgives a genuine no-op.
+          allowed-skips: build, merge
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: posit-dev/images-shared/.github/actions/slack-build-notify@v0
@@ -86,7 +91,7 @@ jobs:
         env:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
-          IMAGE_NAME: "session-complete"
+          IMAGE_NAME: "rstudio-sagemaker"
           # Change-aware builds, matching bakery-build-native.yml. Only set on
           # push events, so schedule/workflow_dispatch still build the full
           # matrix. github.event.before is also populated on pull_request
@@ -118,8 +123,9 @@ jobs:
     # to []. Guard here so a push that didn't touch this image produces
     # 'skipped' instead of 'failure'.
     if: ${{ needs.matrix.outputs.matrix != '[]' }}
-    # ghcr.io is the only registry for this image, so no cloud provider
-    # authentication (and therefore no `id-token: write`) is needed.
+    # Pushes only temp images to ghcr (GITHUB_TOKEN). The final push to ghcr
+    # and the customer-facing public ECR happens in `merge`, which owns the
+    # production AWS_ROLE, so this job needs no cloud credentials.
     runs-on: ubuntu-latest-amd64-8-core
     strategy:
       fail-fast: false
@@ -178,6 +184,10 @@ jobs:
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS"
 
+      # Push per-platform temp images to the temp registry (ghcr) and record
+      # build metadata. The final product tags are NOT created here -- the
+      # `merge` job lands them on the real ghcr + public ECR tags via
+      # `bakery ci publish`.
       - name: Push
         # Push images only for merges into main and weekly scheduled re-builds.
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
@@ -187,10 +197,97 @@ jobs:
           IMAGE_VERSION: ${{ matrix.img.version }}
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
+          TEMP_REGISTRY: "ghcr.io/posit-dev"
         run: |
-          bakery build --push --pull \
+          bakery build --strategy build --push --pull \
             --retry 1 \
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --temp-registry "$TEMP_REGISTRY" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-metadata.json"
+
+      - name: Upload metadata
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: "${{ matrix.img.image }}-${{ matrix.img.version }}-metadata"
+          path: "./${{ matrix.img.image }}-${{ matrix.img.version }}-metadata.json"
+          overwrite: 'true'
+
+  merge:
+    name: "Merge/Push ${{ matrix.img.image }}:${{ matrix.img.version }}"
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    needs:
+      - matrix
+      - build
+    # Only the push/schedule paths produce temp images to publish. A bare `if:`
+    # (no status function) implicitly requires success(), so this also skips
+    # when `build` fails. The matrix guard mirrors `build`'s: an empty
+    # change-aware matrix would otherwise fail this job rather than skip it.
+    if: ${{ needs.matrix.outputs.matrix != '[]' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    # Scopes the AWS_ROLE secret to the production-only role that can push to
+    # the customer-facing public ECR registry.
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        img: ${{ fromJson(needs.matrix.outputs.matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup bakery
+        uses: "posit-dev/images-shared/setup-bakery@v0"
+
+      # Log in to the temp registry (ghcr, pull source) and both final
+      # registries (ghcr + public ECR, push destinations). oras reads
+      # credentials from the docker config these logins populate.
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd  # v2.1.7
+        with:
+          registry-type: public
+
+      - name: Setup ORAS CLI
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d  # v2.0.1
+
+      - name: Download metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: "*-metadata"
+          merge-multiple: true
+
+      # oras index-create -> index-copy onto the final ghcr + public ECR tags.
+      # SOCI is not enabled for this image (see bakery.yaml), so the convert
+      # phase passes targets through untouched and no soci binary is needed.
+      - name: Publish
+        env:
+          GIT_SHA: ${{ github.sha }}
+          IMAGE_NAME: ${{ matrix.img.image }}
+          TEMP_REGISTRY: "ghcr.io/posit-dev"
+        run: |
+          bakery ci publish \
+            --image-name "^${IMAGE_NAME}$" \
+            --temp-registry "$TEMP_REGISTRY" \
+            ./*-metadata.json
