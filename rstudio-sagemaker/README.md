@@ -6,13 +6,16 @@
 </picture>
 </a>
 
-# Posit Workbench Session Complete
+# RStudio on Amazon SageMaker AI
 
-A [Workbench](https://docs.posit.co/ide/server-pro/) session image that carries its own session components, so Workbench can launch sessions from it **without** a `workbench-session-init` init container alongside it.
+A [Workbench](https://docs.posit.co/ide/server-pro/) session image for [RStudio on Amazon SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html). It carries its own session components, so Workbench can launch sessions from it **without** a `workbench-session-init` init container alongside it, and it includes the packages and environment SageMaker needs.
+
+> [!IMPORTANT]
+> This image is **pinned to the Workbench release that Amazon SageMaker AI supports**, currently `2026.08.2+200.pro1`. It does not track new Workbench releases. The automated release workflow skips this image, and maintainers update the pin by hand only after SageMaker adopts a newer release. The Workbench version in the image must match the version SageMaker runs.
 
 It is a [`workbench-session`](https://github.com/posit-dev/images-workbench/tree/main/workbench-session) image with a full Workbench installation layered on top. The session components come along with that installation.
 
-[![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/session-complete)
+[![GitHub Repository](https://img.shields.io/badge/github-repo?logo=github&color=grey)](https://github.com/posit-dev/images-specialized/tree/main/rstudio-sagemaker)
 
 > [!IMPORTANT]
 > Installing all of Workbench to obtain the session components is **not** the efficient way to do this. `workbench-session-init` exists precisely to ship just those components, and on Kubernetes it remains the recommended approach. This image exists for consumers that cannot run an init container, and mirrors the long-standing [`r-session-complete`](https://github.com/rstudio/rstudio-docker-products/tree/main/r-session-complete) image on a modern `workbench-session` base.
@@ -26,7 +29,7 @@ It is a [`workbench-session`](https://github.com/posit-dev/images-workbench/tree
 | **Where to file issues** | [https://github.com/posit-dev/images-specialized/issues](https://github.com/posit-dev/images-specialized/issues) |
 | **Source** | [https://github.com/posit-dev/images-specialized](https://github.com/posit-dev/images-specialized) |
 | **License** | [MIT](https://github.com/posit-dev/images-specialized/blob/main/LICENSE.md) |
-| **Product documentation** | [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/), [Kubernetes integration guide](https://docs.posit.co/ide/server-pro/integration/kubernetes.html) |
+| **Product documentation** | [RStudio on Amazon SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html), [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/) |
 
 ## How this differs from the standard session images
 
@@ -38,7 +41,7 @@ On Kubernetes, Workbench normally assembles a session container from two images 
 
 This image collapses that into one image: a full Workbench install puts the components at `/usr/lib/rstudio-server` at **build** time, so step 1 and 2 are unnecessary.
 
-| | `workbench-session` | `session-complete` |
+| | `workbench-session` | `rstudio-sagemaker` |
 |---|---|---|
 | Session components | Delivered at runtime by `workbench-session-init` | Baked in at `/usr/lib/rstudio-server` |
 | Init container required | Yes | No |
@@ -51,31 +54,27 @@ This image collapses that into one image: a full Workbench install puts the comp
 
 ## Usage
 
-Configure Workbench to launch sessions from this image and do **not** configure a session-init container. In `rserver.conf`, leave `launcher-sessions-init-container-image-name` unset; if it is set, Workbench will attach an init container whose `emptyDir` mount at `/usr/lib/rstudio-server` will **mask** the components baked into this image.
+Use this image as a custom RStudio image in Amazon SageMaker AI. See [Bring your own image to RStudio on SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio-byoi.html) for registering a custom image with your domain.
 
-The [Workbench Helm chart](https://docs.posit.co/helm/charts/rstudio-workbench/README.html) supports this pattern directly via `components.enabled`, which turns off init-container component delivery entirely:
+## SageMaker additions
 
-```yaml
-session:
-  image:
-    repository: "ghcr.io/posit-dev/session-complete"
-    tag: "2026.09.0-174.pro3-ubuntu-26.04"
+On top of the `workbench-session` base and the Workbench installation, the image adds:
 
-components:
-  # No init containers are configured; session.image must be self-contained.
-  enabled: false
-```
+| Addition | Detail |
+|----------|--------|
+| apt packages | `openjdk-11-jdk`, `libpng-dev` |
+| R packages | `reticulate`, installed into every R under `/opt/R` from Posit Public Package Manager |
+| Python packages | `boto3>1.0,<2.0`, `awscli>1.0,<2.0`, `sagemaker[local]<3`, installed into every Python under `/opt/python` (except the Jupyter environment) |
+| Environment | `RSTUDIO_CONNECT_URL=""`, `RSTUDIO_PACKAGE_MANAGER_URL=https://packagemanager.posit.co/cran/__linux__/resolute/latest`, `RSTUDIO_FORCE_NON_ZERO_EXIT_CODE=1` |
 
-This is the same switch the chart documents for the classic `rstudio/r-session-complete` image — `session-complete` is the modern, `workbench-session`-based equivalent.
-
-> [!WARNING]
-> Set `components.enabled: false`, not `components.sessionInit.enabled: false` (which is not a chart value). Leaving init-container delivery on gives the session pod an `emptyDir` mounted at `/usr/lib/rstudio-server`, which **masks** the components baked into this image.
+SageMaker's RSessionGateway reads the `RSTUDIO_*` environment variables when it generates `rsession.conf` for each session. You can override them on a derived image.
 
 ## Image registry
 
-Posit publishes the image to GitHub Container Registry:
+Posit publishes the image to GitHub Container Registry and Amazon ECR Public:
 
-- `ghcr.io/posit-dev/session-complete`
+- `ghcr.io/posit-dev/rstudio-sagemaker`
+- `public.ecr.aws/m0i8p2s7/rstudio-sagemaker`
 
 ## Image variants
 
@@ -88,9 +87,9 @@ Posit publishes the image to GitHub Container Registry:
 
 Tags follow `{version}-{os}[-{variant}]`. The following are valid examples:
 
-- `2026.09.0-174.pro3-ubuntu-26.04`: Standard variant on Ubuntu 26.04
-- `2026.09.0-174.pro3-ubuntu-26.04-std`: Standard variant (explicit)
-- `2026.09.0-174.pro3-ubuntu-26.04-min`: Minimal variant
+- `2026.08.2-200.pro1-ubuntu-26.04`: Standard variant on Ubuntu 26.04
+- `2026.08.2-200.pro1-ubuntu-26.04-std`: Standard variant (explicit)
+- `2026.08.2-200.pro1-ubuntu-26.04-min`: Minimal variant
 - `latest`: Most recent Standard build on the default OS
 
 The version is the **Workbench** version, and it is the exact apt version pin used for the `rstudio-server` package. It is not an R/Python coordinate — those come from whichever `workbench-session` base build the tag resolves to.
@@ -159,10 +158,11 @@ Review this image before using it in production. Organizations with specific Com
 
 ### Version compatibility
 
-The Workbench version in this image must match your Workbench server version. Mismatched versions can cause session startup failures or unexpected behavior.
+The Workbench version in this image must match the Workbench version that Amazon SageMaker AI runs. Mismatched versions can cause session startup failures or unexpected behavior. This is why the image is pinned instead of following new Workbench releases.
 
 ## Documentation
 
+- [RStudio on Amazon SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html)
 - [Posit Workbench documentation](https://docs.posit.co/ide/server-pro/)
 - [Job Launcher overview](https://docs.posit.co/ide/server-pro/admin/job_launcher/job_launcher.html)
 - [Kubernetes integration guide](https://docs.posit.co/ide/server-pro/integration/kubernetes.html)
