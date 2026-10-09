@@ -105,6 +105,11 @@ RUN {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "unixo
 # The SYSTEM libs the P3M binary packages link against (libzmq3-dev, libuv1t64,
 # libwebpmux3) are installed once in the "System packages (apt)" layer above,
 # not here, so this layer is a pure r-install with no apt of its own.
+#
+# r.install() and quarto.install() no longer register the Posit Open apt repo
+# themselves, so register it once here, ahead of both R and Quarto.
+{{ apt.run_setup_posit_repo("open") }}
+
 RUN {{ r.install(Dependencies.R.0) | indent(4) }}
 
 # Unlike rig, r-install does not manage a "current" R or a global shim — every
