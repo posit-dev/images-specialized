@@ -102,6 +102,11 @@ RUN apt-get update -yqq && \
 # The SYSTEM libs the P3M binary packages link against (libzmq3-dev, libuv1t64,
 # libwebpmux3) are installed once in the "System packages (apt)" layer above,
 # not here, so this layer is a pure r-install with no apt of its own.
+#
+# r.install() and quarto.install() no longer register the Posit Open apt repo
+# themselves, so register it once here, ahead of both R and Quarto.
+RUN bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')"
+
 RUN apt-get update -yqq && \
     apt-get install -yqq --no-install-recommends \
         r-4.6.1 && \
