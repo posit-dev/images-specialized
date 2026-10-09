@@ -74,7 +74,7 @@ SageMaker's RSessionGateway reads the `RSTUDIO_*` environment variables when it 
 Posit publishes the image to GitHub Container Registry and Amazon ECR Public:
 
 - `ghcr.io/posit-dev/rstudio-sagemaker`
-- `public.ecr.aws/m0i8p2s7/rstudio-sagemaker`
+- `public.ecr.aws/posit/rstudio-sagemaker`
 
 ## Image variants
 

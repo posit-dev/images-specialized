@@ -232,7 +232,7 @@ jobs:
     if: ${{ needs.matrix.outputs.matrix != '[]' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     # Scopes the AWS_ROLE secret to the production-only role that can push to
-    # the customer-facing public ECR registry (shared with positron-sagemaker).
+    # the customer-facing public ECR registry.
     environment: production
     strategy:
       fail-fast: false
