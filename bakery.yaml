@@ -153,8 +153,8 @@ images:
           - host: "935931255537.dkr.ecr.us-east-2.amazonaws.com"
             repository: "positron-sagemaker-preview"
     versions:
-      - name: 2026.09.1-2
-        subpath: '2026.09'
+      - name: 2026.10.0-297
+        subpath: '2026.10'
         latest: true
         os:
           - name: Ubuntu 24.04
@@ -163,7 +163,7 @@ images:
               - linux/amd64
         dependencies:
           - dependency: quarto
-            version: 1.10.18
+            version: 1.10.19
           - dependency: R
             version: 4.6.1
   - name: session-complete
