@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
 #
-# Posit Workbench "session complete" -- a workbench-session image with a full
+# RStudio on Amazon SageMaker AI -- a workbench-session image with a full
 # Workbench installation layered on, so a session container carries its own
 # session components and needs no workbench-session-init init container
-# alongside it.
+# alongside it, plus the packages and environment SageMaker's RSessionGateway
+# expects (see the SageMaker-specific blocks below).
+#
+# The Workbench version is PINNED to the release SageMaker supports; it is not
+# moved by the automated Release workflow.
 #
 # This mirrors the approach in rstudio-docker-products'
 # r-session-complete image: install the entire rstudio-server (Workbench) deb
@@ -52,6 +56,18 @@ ARG DEBIAN_FRONTEND=noninteractive
 # layer.
 ARG RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1
 
+### ENV declarations ###
+# SageMaker's RSessionGateway consumes these to dynamically configure
+# rsession.conf at session start.
+#   RSTUDIO_CONNECT_URL              -- empty: no Connect server by default
+#   RSTUDIO_PACKAGE_MANAGER_URL      -- Posit Public Package Manager binaries
+#                                       for this image's Ubuntu release; also
+#                                       the repo the R packages below come from
+#   RSTUDIO_FORCE_NON_ZERO_EXIT_CODE -- report a failed session as non-zero
+ENV RSTUDIO_CONNECT_URL=""
+ENV RSTUDIO_PACKAGE_MANAGER_URL="https://packagemanager.posit.co/cran/__linux__/resolute/latest"
+ENV RSTUDIO_FORCE_NON_ZERO_EXIT_CODE="1"
+
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
 ### Install additional apt packages ###
@@ -77,12 +93,39 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 #   session image that builds perfectly cleanly. Found by the
 #   rsession-reports-pinned-workbench-version goss check; the
 #   workbench-binaries-shared-libs-resolve check now guards the general case.
+#
+# openjdk-11-jdk: SageMaker requirement; Java 11 specifically, independent of
+#   whatever default JDK the Standard base already carries.
+# libpng-dev: SageMaker requirement; already in the Standard base but absent
+#   from Minimal.
 RUN apt-get update -yqq && \
     apt-get install -yqq --no-install-recommends \
         libcurl4-gnutls-dev \
-        libcap2 && \
+        libcap2 \
+        openjdk-11-jdk \
+        libpng-dev && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/*
+
+### Install SageMaker R and Python packages ###
+# reticulate for every R, and the AWS / SageMaker SDKs for every Python, that
+# the workbench-session base ships. The versions are DISCOVERED rather than
+# templated: R and Python come from the base image and are not coordinates in
+# this image's Bakery config, so a hardcoded version would break on the next
+# base rebuild. /opt/python/jupyter (the base's Jupyter venv) is skipped by the
+# [0-9]* glob. `compgen -G` fails the build if a glob matches nothing, rather
+# than silently installing into no interpreter at all.
+RUN compgen -G '/opt/R/*/bin/R' >/dev/null && \
+    compgen -G '/opt/python/[0-9]*/bin/pip' >/dev/null && \
+    for r in /opt/R/*/bin/R; do \
+        "${r}" -s -e "install.packages('reticulate', repos = '${RSTUDIO_PACKAGE_MANAGER_URL}'); library(reticulate)"; \
+    done && \
+    for pip in /opt/python/[0-9]*/bin/pip; do \
+        "${pip}" install --no-cache-dir --upgrade --break-system-packages \
+            'boto3>1.0,<2.0' \
+            'awscli>1.0,<2.0' \
+            'sagemaker[local]<3'; \
+    done
 
 ### Install Workbench 2026.08.2+200.pro1 ###
 # Provides the session components at /usr/lib/rstudio-server/bin. Note the

@@ -31,8 +31,13 @@ package:
   # silently breaks without it.
   perl:
     installed: true
-  # The one apt package this image adds on top of the base.
+  # The apt packages this image adds on top of the base.
   libcurl4-gnutls-dev:
+    installed: true
+  # SageMaker requirements.
+  openjdk-11-jdk:
+    installed: true
+  libpng-dev:
     installed: true
 
 file:
@@ -453,4 +458,51 @@ command:
         exit 1
       fi
       echo "OK: pebble not on PATH"
+    exit-status: 0
+
+  # --- SageMaker: reticulate in every R -----------------------------------
+  # Mirrors the Containerfile's discovery: every /opt/R/<version> the base
+  # ships must have reticulate, not just the first one found.
+  sagemaker-r-reticulate-installed:
+    exec: |
+      rc=0
+      for r in /opt/R/*/bin/R; do
+        "$r" -s -e 'library(reticulate)' >/dev/null 2>&1 \
+          || { echo "ERROR: reticulate not loadable in $r" >&2; rc=1; }
+      done
+      if [ "$rc" -eq 0 ]; then echo "OK: reticulate loads in every R"; fi
+      exit "$rc"
+    exit-status: 0
+
+  # --- SageMaker: AWS / SageMaker SDKs in every Python --------------------
+  # /opt/python/jupyter (the base's Jupyter venv) is skipped, as in the
+  # Containerfile. `aws --version` confirms the CLI is the v1 (pip) build.
+  sagemaker-python-sdks-installed:
+    exec: |
+      rc=0
+      for py in /opt/python/[0-9]*/bin/python3; do
+        bin="$(dirname "$py")"
+        "$py" -c 'import boto3, sagemaker' >/dev/null 2>&1 \
+          || { echo "ERROR: boto3/sagemaker not importable in $py" >&2; rc=1; }
+        "$bin/aws" --version 2>&1 | grep -q '^aws-cli/1\.' \
+          || { echo "ERROR: aws-cli v1 missing in $bin" >&2; rc=1; }
+      done
+      if [ "$rc" -eq 0 ]; then echo "OK: SageMaker SDKs present in every Python"; fi
+      exit "$rc"
+    exit-status: 0
+    # `import sagemaker` alone takes longer than goss's 10s default.
+    timeout: 60000
+
+  # --- SageMaker: RSessionGateway environment -----------------------------
+  # RSessionGateway reads these to configure rsession.conf. RSTUDIO_CONNECT_URL
+  # is deliberately empty, so assert it is SET rather than non-empty.
+  sagemaker-rsession-gateway-env:
+    exec: |
+      [ "${RSTUDIO_CONNECT_URL+set}" = "set" ] || { echo "ERROR: RSTUDIO_CONNECT_URL unset" >&2; exit 1; }
+      case "${RSTUDIO_PACKAGE_MANAGER_URL:-}" in
+        https://packagemanager.posit.co/cran/__linux__/*/latest) ;;
+        *) echo "ERROR: RSTUDIO_PACKAGE_MANAGER_URL='${RSTUDIO_PACKAGE_MANAGER_URL:-}'" >&2; exit 1 ;;
+      esac
+      [ "${RSTUDIO_FORCE_NON_ZERO_EXIT_CODE:-}" = "1" ] || { echo "ERROR: RSTUDIO_FORCE_NON_ZERO_EXIT_CODE != 1" >&2; exit 1; }
+      echo "OK: RSessionGateway environment set"
     exit-status: 0
