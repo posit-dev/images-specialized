@@ -204,3 +204,10 @@ images:
             primary: true
             platforms:
               - linux/amd64
+      - name: 2026.08.2+200.pro1
+        subpath: '2026.08'
+        os:
+          - name: Ubuntu 26.04
+            primary: true
+            platforms:
+              - linux/amd64
