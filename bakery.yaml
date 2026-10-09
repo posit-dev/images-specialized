@@ -173,6 +173,11 @@ images:
       the session components ship in the image, plus the Java, R, Python and
       environment configuration SageMaker needs."
     documentationUrl: "https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html"
+    # Same customer-facing public ECR registry alias as positron-sagemaker.
+    extraRegistries:
+      - host: "public.ecr.aws"
+        namespace: "m0i8p2s7"
+        repository: "rstudio-sagemaker"
     variants:
       - name: Standard
         extension: std
