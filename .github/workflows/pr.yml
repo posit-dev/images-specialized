@@ -50,6 +50,7 @@ jobs:
     with:
       dev-versions: "exclude"
       matrix-versions: "exclude"
+      trivy-scan: true
       cache: false  # Caching silently fails on these images as they are above the GHCR size limit.
       # This workflow builds every image in bakery.yaml, so it is sized for the
       # largest one. rstudio-sagemaker is ~15 GB (std) / ~13 GB (min) built, on
