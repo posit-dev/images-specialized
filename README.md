@@ -6,6 +6,7 @@ For the standard, non-platform-specific Workbench container images, see [posit-d
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/wgcw.yml?branch=main&label=workbench-for-google-cloud-workstations+build)](https://github.com/posit-dev/images-specialized/actions/workflows/wgcw.yml)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/waml.yml?branch=main&label=workbench-for-microsoft-azure-ml+build)](https://github.com/posit-dev/images-specialized/actions/workflows/waml.yml)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/posit-dev/images-specialized/rstudio-sagemaker.yml?branch=main&label=rstudio-sagemaker+build)](https://github.com/posit-dev/images-specialized/actions/workflows/rstudio-sagemaker.yml)
 
 ## Images
 
@@ -13,6 +14,7 @@ For the standard, non-platform-specific Workbench container images, see [posit-d
 |:------|:---------|:-----------------------|
 | [workbench-for-google-cloud-workstations](./workbench-for-google-cloud-workstations/) | Google Cloud Workstations | [Develop code using Posit Workbench](https://docs.cloud.google.com/workstations/docs/develop-code-using-posit-workbench-rstudio) |
 | [workbench-for-microsoft-azure-ml](./workbench-for-microsoft-azure-ml/) | Azure Machine Learning compute instances | [Add custom applications such as RStudio or Posit Workbench](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-create-compute-instance?view=azureml-api-2&tabs=python#add-custom-applications-such-as-rstudio-or-posit-workbench) |
+| [rstudio-sagemaker](./rstudio-sagemaker/) | Amazon SageMaker AI (RStudio; pinned to the SageMaker-supported Workbench release) | [RStudio on Amazon SageMaker AI](https://docs.aws.amazon.com/sagemaker/latest/dg/rstudio.html) |
 
 See each image's documentation for the canonical registry, available tags, and platform-specific configuration.
 
