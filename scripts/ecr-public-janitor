@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Apply the retention policy to a public ECR repository (ECR Public has no lifecycle policies).
+
+Tagged images are deleted once imagePushedAt is older than --tagged-days, except digests carrying a
+protected tag. Untagged images are deleted after --untagged-days unless a kept tagged image references
+them (index children, SOCI annotations, subject referrers) -- those children are untagged in ECR but
+required to pull the tag.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+
+REGION = "us-east-1"
+REGISTRY = "public.ecr.aws/posit"
+PROTECTED_TAGS = frozenset({"latest", "std", "min"})
+TAGGED_DAYS = 548
+UNTAGGED_DAYS = 30
+BATCH_SIZE = 100
+INDEX_TYPES = ("application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json")
+
+
+def run(cmd):
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+
+
+def describe_images(repo):
+    out = run(["aws", "ecr-public", "describe-images", "--region", REGION, "--repository-name", repo, "--output", "json"])
+    return json.loads(out)["imageDetails"]
+
+
+def fetch_manifest(repo, digest):
+    return json.loads(run(["oras", "manifest", "fetch", f"{REGISTRY}/{repo}@{digest}"]))
+
+
+def parse_time(value):
+    # Python < 3.11 fromisoformat rejects a trailing "Z"
+    t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def references(manifest):
+    """Digests a manifest depends on: index children and com.amazon.soci.* annotation values."""
+    refs = [m["digest"] for m in manifest.get("manifests", [])]
+    annotated = [manifest.get("annotations", {})] + [m.get("annotations", {}) for m in manifest.get("manifests", [])]
+    refs += [v for a in annotated for k, v in a.items() if k.startswith("com.amazon.soci.") and v.startswith("sha256:")]
+    return refs
+
+
+def build_keep_set(roots, fetch):
+    keep, stack = set(roots), list(roots)
+    while stack:
+        manifest = fetch(stack.pop())
+        for ref in references(manifest):
+            if ref not in keep:
+                keep.add(ref)
+                stack.append(ref)
+    return keep
+
+
+def plan_repo(images, fetch, now, protected=PROTECTED_TAGS, tagged_days=TAGGED_DAYS, untagged_days=UNTAGGED_DAYS):
+    """Return (delete_order, reasons); delete_order lists digests parents-first."""
+    tagged_cutoff = now - timedelta(days=tagged_days)
+    untagged_cutoff = now - timedelta(days=untagged_days)
+    tagged = [i for i in images if i.get("imageTags")]
+    expired = [
+        i for i in tagged
+        if parse_time(i["imagePushedAt"]) < tagged_cutoff and not protected.intersection(i["imageTags"])
+    ]
+    if tagged and len(expired) == len(tagged):
+        raise SystemExit("refusing to delete every tagged image in the repository")
+    expired_digests = {i["imageDigest"] for i in expired}
+    survivors = [i["imageDigest"] for i in tagged if i["imageDigest"] not in expired_digests]
+    keep = build_keep_set(survivors, fetch)
+
+    # Referrer-style artifacts (subject -> kept digest) are kept too; iterate since referrers can chain.
+    untagged = [i for i in images if not i.get("imageTags") and i["imageDigest"] not in keep]
+    subjects = {i["imageDigest"]: fetch(i["imageDigest"]).get("subject", {}).get("digest") for i in untagged}
+    changed = True
+    while changed:
+        changed = False
+        for digest, subject in subjects.items():
+            if subject in keep and digest not in keep:
+                keep.add(digest)
+                changed = True
+
+    delete = {d: "expired tagged image" for d in expired_digests}
+    for i in untagged:
+        if i["imageDigest"] not in keep and parse_time(i["imagePushedAt"]) < untagged_cutoff:
+            delete[i["imageDigest"]] = "untagged, unreferenced"
+    return order_parents_first(delete, images, fetch), delete
+
+
+def order_parents_first(delete, images, fetch):
+    """Indexes/artifacts (which reference others) before plain manifests. ECR rejects nothing here, but a
+    half-finished run must never leave a tag whose children are gone."""
+    media = {i["imageDigest"]: i.get("imageManifestMediaType", "") for i in images}
+    tagged = {i["imageDigest"] for i in images if i.get("imageTags")}
+
+    def rank(d):
+        if d in tagged:
+            return 0
+        return 1 if media[d] in INDEX_TYPES else 2
+
+    return sorted(delete, key=rank)
+
+
+def delete_digests(repo, digests):
+    failures = []
+    for n in range(0, len(digests), BATCH_SIZE):
+        chunk = digests[n:n + BATCH_SIZE]
+        cmd = ["aws", "ecr-public", "batch-delete-image", "--region", REGION, "--repository-name", repo,
+               "--image-ids", *[f"imageDigest={d}" for d in chunk], "--output", "json"]
+        try:
+            result = json.loads(run(cmd))
+        except subprocess.CalledProcessError as e:
+            failures += [f"{d}: {e.stderr.strip()}" for d in chunk]
+            continue
+        failures += [f"{f['imageId'].get('imageDigest')}: {f.get('failureReason')}" for f in result.get("failures", [])]
+    return failures
+
+
+def summary(repo, images, order, reasons, dry_run, failures):
+    tags = {i["imageDigest"]: ",".join(i.get("imageTags", [])) or "-" for i in images}
+    pushed = {i["imageDigest"]: i["imagePushedAt"] for i in images}
+    lines = [f"### {repo} ({'dry run, nothing deleted' if dry_run else 'deleted'}: {len(order)} of {len(images)} images)", ""]
+    if order:
+        lines += ["| Digest | Tags | Pushed | Reason |", "|---|---|---|---|"]
+        lines += [f"| `{d}` | {tags[d]} | {pushed[d]} | {reasons[d]} |" for d in order]
+    if failures:
+        lines += ["", "**Failures:**"] + [f"- {f}" for f in failures]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("repository")
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args(argv)
+
+    images = describe_images(args.repository)
+    order, reasons = plan_repo(images, lambda d: fetch_manifest(args.repository, d), datetime.now(timezone.utc))
+    failures = [] if args.dry_run else delete_digests(args.repository, order)
+    text = summary(args.repository, images, order, reasons, args.dry_run, failures)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(text)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
