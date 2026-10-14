@@ -49,6 +49,14 @@ def references(manifest):
     return refs
 
 
+def require_complete(manifests):
+    """Fail closed: a referenced digest we hold no manifest for could hide a chain to a kept image."""
+    for digest, manifest in manifests.items():
+        for ref in references(manifest):
+            if ref not in manifests:
+                raise SystemExit(f"{digest} references {ref}, which is missing from the repository inventory; aborting before any deletion")
+
+
 def keep_closure(roots, manifests):
     """Every digest reachable from roots: index children, SOCI annotation digests, and referrers whose
     subject is already kept (which are themselves walked)."""
@@ -57,10 +65,13 @@ def keep_closure(roots, manifests):
         subject = manifest.get("subject", {}).get("digest")
         if subject:
             referrers.setdefault(subject, []).append(digest)
+    # A subject absent from the inventory is not an error: it is not needed to pull the referrer
+    # (dangling referrers are legal OCI), unlike index children / SOCI digests above.
+    require_complete(manifests)
     keep, stack = set(roots), list(roots)
     while stack:
         digest = stack.pop()
-        for ref in references(manifests.get(digest, {})) + referrers.get(digest, []):
+        for ref in references(manifests[digest]) + referrers.get(digest, []):
             if ref not in keep:
                 keep.add(ref)
                 stack.append(ref)
@@ -73,7 +84,7 @@ def delete_layers(delete, manifests):
     deleting an image still referenced by a manifest list (ImageReferencedByManifestList)."""
     blockers = {d: set() for d in delete}  # d -> digests that must be deleted before d
     for d in delete:
-        manifest = manifests.get(d, {})
+        manifest = manifests[d]
         for ref in references(manifest):
             if ref in delete:
                 blockers[ref].add(d)

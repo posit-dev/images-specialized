@@ -28,7 +28,7 @@ def img(digest, pushed, tags=None, media=IMAGE):
 
 def index_manifest(image, soci):
     return {
-        "annotations": {"com.amazon.soci.something-digest": "sha256:ignored-if-not-sha"},
+        "annotations": {"com.amazon.soci.something-digest": "ignored-if-not-sha"},
         "manifests": [
             {"digest": image, "annotations": {"com.amazon.soci.index-digest": soci}},
             {"digest": soci, "artifactType": "application/vnd.amazon.soci.index.v2+json",
@@ -183,6 +183,50 @@ class DeleteTest(unittest.TestCase):
 
         with mock.patch.object(janitor, "run", fake_run), mock.patch("builtins.print"):
             self.assertEqual(janitor.main(["repo", "--dry-run"]), 0)
+
+
+class FailClosedTest(unittest.TestCase):
+    """latest -> mid -> leaf, leaf expired; any gap in knowledge of mid must abort before deletion."""
+
+    def run_main(self, images, fetch_manifest):
+        calls = []
+
+        def fake_run(cmd):
+            calls.append(cmd)
+            if cmd[0] == "aws" and "describe-images" in cmd:
+                return json.dumps({"imageDetails": images})
+            if cmd[0] == "oras":
+                return json.dumps(fetch_manifest(cmd[-1].split("@")[1]))
+            return json.dumps({"imageIds": []})
+
+        with mock.patch.object(janitor, "run", fake_run), mock.patch("builtins.print"):
+            try:
+                return calls, None, janitor.main(["repo"])
+            except (SystemExit, subprocess.CalledProcessError) as e:
+                return calls, e, None
+
+    def assert_no_delete(self, calls, error):
+        self.assertIsNotNone(error)
+        self.assertFalse([c for c in calls if "batch-delete-image" in c])
+
+    def test_intermediate_missing_from_inventory_aborts(self):
+        images = [img("sha256:latest", MID, ["latest"], INDEX), img("sha256:leaf", OLD)]
+        chain = {"sha256:latest": {"manifests": [{"digest": "sha256:mid"}]}}
+        calls, error, _ = self.run_main(images, lambda d: chain.get(d, {}))
+        self.assert_no_delete(calls, error)
+
+    def test_intermediate_fetch_failure_aborts(self):
+        images = [img("sha256:latest", MID, ["latest"], INDEX), img("sha256:mid", OLD, media=INDEX),
+                  img("sha256:leaf", OLD)]
+        chain = {"sha256:latest": {"manifests": [{"digest": "sha256:mid"}]}}
+
+        def fetch(d):
+            if d == "sha256:mid":
+                raise subprocess.CalledProcessError(1, "oras", stderr="boom")
+            return chain.get(d, {})
+
+        calls, error, _ = self.run_main(images, fetch)
+        self.assert_no_delete(calls, error)
 
 
 if __name__ == "__main__":
