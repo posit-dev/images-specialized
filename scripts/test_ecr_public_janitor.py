@@ -47,7 +47,8 @@ def tagged_family(prefix, pushed, tags):
 
 
 def plan(images, manifests, **kw):
-    return janitor.plan_repo(images, lambda d: manifests.get(d, {}), NOW, **kw)
+    layers, reasons = janitor.plan_repo(images, lambda d: manifests.get(d, {}), NOW, **kw)
+    return [d for layer in layers for d in layer], reasons
 
 
 class PlanTest(unittest.TestCase):
@@ -72,11 +73,6 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(order[0], "sha256:old-idx")
         self.assertEqual(set(order), {"sha256:old-idx", "sha256:old-img", "sha256:old-soci"})
 
-    def test_index_ordered_before_plain_manifest(self):
-        images = [img("sha256:plain", OLD), img("sha256:oldidx", OLD, media=INDEX)] + self.keep_images
-        order, _ = plan(images, self.manifests)
-        self.assertEqual(order, ["sha256:oldidx", "sha256:plain"])
-
     def test_protected_tags_kept_when_old(self):
         for tag in ("latest", "std", "min"):
             old_images, old_manifests = tagged_family(tag, OLD, [tag, "9.9"])
@@ -99,6 +95,39 @@ class PlanTest(unittest.TestCase):
                      "sha256:mid": {"manifests": [{"digest": "sha256:leaf"}]}}
         self.assertEqual(plan(images, manifests)[0], [])
 
+    def test_referrer_index_child_kept(self):
+        images = self.keep_images + [img("sha256:ref", OLD, media=INDEX), img("sha256:refchild", OLD)]
+        manifests = {**self.manifests, "sha256:ref": {"subject": {"digest": "sha256:keep-idx"},
+                                                       "manifests": [{"digest": "sha256:refchild"}]}}
+        self.assertEqual(plan(images, manifests)[0], [])
+
+    def test_referrer_soci_annotation_kept(self):
+        images = self.keep_images + [img("sha256:ref", OLD), img("sha256:sociblob", OLD)]
+        manifests = {**self.manifests, "sha256:ref": {
+            "subject": {"digest": "sha256:keep-idx"},
+            "annotations": {"com.amazon.soci.index-digest": "sha256:sociblob"}}}
+        self.assertEqual(plan(images, manifests)[0], [])
+
+    def test_tagged_child_of_protected_index_kept(self):
+        images = [img("sha256:latest", OLD, ["latest"], INDEX), img("sha256:old01", OLD, ["0.1"]),
+                  img("sha256:other", OLD, ["0.2"])]
+        manifests = {"sha256:latest": {"manifests": [{"digest": "sha256:old01"}]}}
+        self.assertEqual(plan(images, manifests)[0], ["sha256:other"])
+
+    def test_nested_index_deleted_outer_before_inner_before_leaf(self):
+        images = self.keep_images + [img("sha256:leaf", OLD), img("sha256:inner", OLD, media=INDEX),
+                                     img("sha256:outer", OLD, media=INDEX)]
+        manifests = {**self.manifests, "sha256:outer": {"manifests": [{"digest": "sha256:inner"}]},
+                     "sha256:inner": {"manifests": [{"digest": "sha256:leaf"}]}}
+        layers, _ = janitor.plan_repo(images, lambda d: manifests.get(d, {}), NOW)
+        self.assertEqual(layers, [["sha256:outer"], ["sha256:inner"], ["sha256:leaf"]])
+
+    def test_referrer_deleted_before_its_subject(self):
+        images = self.keep_images + [img("sha256:subj", OLD), img("sha256:ref", OLD)]
+        manifests = {**self.manifests, "sha256:ref": {"subject": {"digest": "sha256:subj"}}}
+        layers, _ = janitor.plan_repo(images, lambda d: manifests.get(d, {}), NOW)
+        self.assertEqual(layers, [["sha256:ref"], ["sha256:subj"]])
+
     def test_custom_thresholds_and_protected_tags(self):
         images = self.keep_images + [img("sha256:orphan", MID), img("sha256:t", MID, ["x"])]
         order, _ = plan(images, self.manifests, tagged_days=1, untagged_days=1, protected={"x"})
@@ -107,21 +136,41 @@ class PlanTest(unittest.TestCase):
 
 
 class DeleteTest(unittest.TestCase):
-    def test_chunks_of_100_and_failures_reported(self):
-        digests = [f"sha256:{n}" for n in range(250)]
+    def test_chunks_of_100(self):
         calls = []
 
         def fake_run(cmd):
             calls.append(cmd)
-            if len(calls) == 2:
-                raise subprocess.CalledProcessError(1, cmd, stderr="boom")
-            return json.dumps({"failures": [{"imageId": {"imageDigest": "sha256:0"}, "failureReason": "nope"}]}
-                              if len(calls) == 1 else {})
+            return json.dumps({"imageIds": [{"imageDigest": a[len("imageDigest="):]}
+                                            for a in cmd if a.startswith("imageDigest=")]})
+
+        layers = [[f"sha256:{n}" for n in range(250)]]
+        with mock.patch.object(janitor, "run", fake_run):
+            deleted, failures = janitor.delete_digests("repo", layers)
+        self.assertEqual([sum(a.startswith("imageDigest=") for a in c) for c in calls], [100, 100, 50])
+        self.assertEqual((len(deleted), failures), (250, []))
+
+    def test_stops_after_response_failure(self):
+        calls = []
+
+        def fake_run(cmd):
+            calls.append(cmd)
+            return json.dumps({"failures": [{"imageId": {"imageDigest": "sha256:0"}, "failureReason": "nope"}]})
 
         with mock.patch.object(janitor, "run", fake_run):
-            failures = janitor.delete_digests("repo", digests)
-        self.assertEqual([sum(a.startswith("imageDigest=") for a in c) for c in calls], [100, 100, 50])
-        self.assertEqual(len(failures), 101)
+            deleted, failures = janitor.delete_digests("repo", [["sha256:0"], ["sha256:1"]])
+        self.assertEqual((len(calls), deleted, failures), (1, [], ["sha256:0: nope"]))
+
+    def test_stops_after_command_failure(self):
+        calls = []
+
+        def fake_run(cmd):
+            calls.append(cmd)
+            raise subprocess.CalledProcessError(1, cmd, stderr="boom")
+
+        with mock.patch.object(janitor, "run", fake_run):
+            deleted, failures = janitor.delete_digests("repo", [["sha256:0"], ["sha256:1"]])
+        self.assertEqual((len(calls), deleted, failures), (1, [], ["sha256:0: boom"]))
 
     def test_main_dry_run_does_not_delete(self):
         images = [img("sha256:keep", MID, ["1.0"]), img("sha256:orphan", OLD)]

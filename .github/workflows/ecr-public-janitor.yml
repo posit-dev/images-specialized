@@ -4,9 +4,10 @@ name: ECR Public Janitor
 # policies). Scheduled runs delete for real; manual runs default to dry-run.
 
 on:
-  schedule:
-    # Monday 07:00 UTC (renovate holds 06:00 Monday).
-    - cron: "0 7 * * 1"
+  # Enable the schedule after both production dry runs (positron-sagemaker, rstudio-sagemaker) are reviewed (#112).
+  # schedule:
+  #   # Monday 07:00 UTC (renovate holds 06:00 Monday).
+  #   - cron: "0 7 * * 1"
 
   workflow_dispatch:
     inputs:

@@ -3,7 +3,7 @@
 
 Tagged images are deleted once imagePushedAt is older than --tagged-days, except digests carrying a
 protected tag. Untagged images are deleted after --untagged-days unless a kept tagged image references
-them (index children, SOCI annotations, subject referrers) -- those children are untagged in ECR but
+them (index children, SOCI annotations, subject referrers, walked transitively) -- those children are untagged in ECR but
 required to pull the tag.
 """
 
@@ -20,7 +20,6 @@ PROTECTED_TAGS = frozenset({"latest", "std", "min"})
 TAGGED_DAYS = 548
 UNTAGGED_DAYS = 30
 BATCH_SIZE = 100
-INDEX_TYPES = ("application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json")
 
 
 def run(cmd):
@@ -50,83 +49,94 @@ def references(manifest):
     return refs
 
 
-def build_keep_set(roots, fetch):
+def keep_closure(roots, manifests):
+    """Every digest reachable from roots: index children, SOCI annotation digests, and referrers whose
+    subject is already kept (which are themselves walked)."""
+    referrers = {}
+    for digest, manifest in manifests.items():
+        subject = manifest.get("subject", {}).get("digest")
+        if subject:
+            referrers.setdefault(subject, []).append(digest)
     keep, stack = set(roots), list(roots)
     while stack:
-        manifest = fetch(stack.pop())
-        for ref in references(manifest):
+        digest = stack.pop()
+        for ref in references(manifests.get(digest, {})) + referrers.get(digest, []):
             if ref not in keep:
                 keep.add(ref)
                 stack.append(ref)
     return keep
 
 
+def delete_layers(delete, manifests):
+    """Split digests into layers; each layer only holds digests no other undeleted digest in the set
+    references. A manifest list (or SOCI index, or referrer) must go before what it points at: ECR rejects
+    deleting an image still referenced by a manifest list (ImageReferencedByManifestList)."""
+    blockers = {d: set() for d in delete}  # d -> digests that must be deleted before d
+    for d in delete:
+        manifest = manifests.get(d, {})
+        for ref in references(manifest):
+            if ref in delete:
+                blockers[ref].add(d)
+        subject = manifest.get("subject", {}).get("digest")
+        if subject in delete:
+            blockers[subject].add(d)
+    layers = []
+    while blockers:
+        layer = [d for d, b in blockers.items() if not b]
+        if not layer:
+            raise SystemExit("reference cycle among digests to delete")
+        layers.append(layer)
+        for d in layer:
+            del blockers[d]
+        for b in blockers.values():
+            b.difference_update(layer)
+    return layers
+
+
 def plan_repo(images, fetch, now, protected=PROTECTED_TAGS, tagged_days=TAGGED_DAYS, untagged_days=UNTAGGED_DAYS):
-    """Return (delete_order, reasons); delete_order lists digests parents-first."""
+    """Return (delete_layers, reasons): the digests safe to delete, in dependency layers."""
     tagged_cutoff = now - timedelta(days=tagged_days)
     untagged_cutoff = now - timedelta(days=untagged_days)
-    tagged = [i for i in images if i.get("imageTags")]
-    expired = [
-        i for i in tagged
-        if parse_time(i["imagePushedAt"]) < tagged_cutoff and not protected.intersection(i["imageTags"])
-    ]
-    if tagged and len(expired) == len(tagged):
+    candidates = {}
+    for i in images:
+        tags = i.get("imageTags")
+        if tags and not protected.intersection(tags) and parse_time(i["imagePushedAt"]) < tagged_cutoff:
+            candidates[i["imageDigest"]] = "expired tagged image"
+        elif not tags and parse_time(i["imagePushedAt"]) < untagged_cutoff:
+            candidates[i["imageDigest"]] = "untagged, unreferenced"
+    manifests = {i["imageDigest"]: fetch(i["imageDigest"]) for i in images}
+    # Everything that is not a candidate survives, and so does everything it reaches -- including candidates.
+    keep = keep_closure([i["imageDigest"] for i in images if i["imageDigest"] not in candidates], manifests)
+    delete = {d: r for d, r in candidates.items() if d not in keep}
+    if any(i.get("imageTags") for i in images) and all(
+            i["imageDigest"] in delete for i in images if i.get("imageTags")):
         raise SystemExit("refusing to delete every tagged image in the repository")
-    expired_digests = {i["imageDigest"] for i in expired}
-    survivors = [i["imageDigest"] for i in tagged if i["imageDigest"] not in expired_digests]
-    keep = build_keep_set(survivors, fetch)
-
-    # Referrer-style artifacts (subject -> kept digest) are kept too; iterate since referrers can chain.
-    untagged = [i for i in images if not i.get("imageTags") and i["imageDigest"] not in keep]
-    subjects = {i["imageDigest"]: fetch(i["imageDigest"]).get("subject", {}).get("digest") for i in untagged}
-    changed = True
-    while changed:
-        changed = False
-        for digest, subject in subjects.items():
-            if subject in keep and digest not in keep:
-                keep.add(digest)
-                changed = True
-
-    delete = {d: "expired tagged image" for d in expired_digests}
-    for i in untagged:
-        if i["imageDigest"] not in keep and parse_time(i["imagePushedAt"]) < untagged_cutoff:
-            delete[i["imageDigest"]] = "untagged, unreferenced"
-    return order_parents_first(delete, images, fetch), delete
+    return delete_layers(delete, manifests), delete
 
 
-def order_parents_first(delete, images, fetch):
-    """Indexes/artifacts (which reference others) before plain manifests. ECR rejects nothing here, but a
-    half-finished run must never leave a tag whose children are gone."""
-    media = {i["imageDigest"]: i.get("imageManifestMediaType", "") for i in images}
-    tagged = {i["imageDigest"] for i in images if i.get("imageTags")}
-
-    def rank(d):
-        if d in tagged:
-            return 0
-        return 1 if media[d] in INDEX_TYPES else 2
-
-    return sorted(delete, key=rank)
-
-
-def delete_digests(repo, digests):
-    failures = []
-    for n in range(0, len(digests), BATCH_SIZE):
-        chunk = digests[n:n + BATCH_SIZE]
-        cmd = ["aws", "ecr-public", "batch-delete-image", "--region", REGION, "--repository-name", repo,
-               "--image-ids", *[f"imageDigest={d}" for d in chunk], "--output", "json"]
-        try:
-            result = json.loads(run(cmd))
-        except subprocess.CalledProcessError as e:
-            failures += [f"{d}: {e.stderr.strip()}" for d in chunk]
-            continue
-        failures += [f"{f['imageId'].get('imageDigest')}: {f.get('failureReason')}" for f in result.get("failures", [])]
-    return failures
+def delete_digests(repo, layers):
+    """Delete layer by layer; stop at the first failure. Returns (deleted_digests, failures)."""
+    deleted, failures = [], []
+    for layer in layers:
+        for n in range(0, len(layer), BATCH_SIZE):
+            chunk = layer[n:n + BATCH_SIZE]
+            cmd = ["aws", "ecr-public", "batch-delete-image", "--region", REGION, "--repository-name", repo,
+                   "--image-ids", *[f"imageDigest={d}" for d in chunk], "--output", "json"]
+            try:
+                result = json.loads(run(cmd))
+            except subprocess.CalledProcessError as e:
+                return deleted, [f"{d}: {e.stderr.strip()}" for d in chunk]
+            deleted += [i["imageDigest"] for i in result.get("imageIds", []) if "imageDigest" in i]
+            failures += [f"{f['imageId'].get('imageDigest')}: {f.get('failureReason')}" for f in result.get("failures", [])]
+            if failures:
+                return deleted, failures
+    return deleted, failures
 
 
-def summary(repo, images, order, reasons, dry_run, failures):
+def summary(repo, images, order, reasons, dry_run, deleted, failures):
     tags = {i["imageDigest"]: ",".join(i.get("imageTags", [])) or "-" for i in images}
     pushed = {i["imageDigest"]: i["imagePushedAt"] for i in images}
-    lines = [f"### {repo} ({'dry run, nothing deleted' if dry_run else 'deleted'}: {len(order)} of {len(images)} images)", ""]
+    lines = [f"### {repo} ({'dry run, nothing deleted' if dry_run else f'deleted {len(deleted)} of {len(order)} planned'}; {len(images)} images)", ""]
     if order:
         lines += ["| Digest | Tags | Pushed | Reason |", "|---|---|---|---|"]
         lines += [f"| `{d}` | {tags[d]} | {pushed[d]} | {reasons[d]} |" for d in order]
@@ -142,9 +152,10 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     images = describe_images(args.repository)
-    order, reasons = plan_repo(images, lambda d: fetch_manifest(args.repository, d), datetime.now(timezone.utc))
-    failures = [] if args.dry_run else delete_digests(args.repository, order)
-    text = summary(args.repository, images, order, reasons, args.dry_run, failures)
+    layers, reasons = plan_repo(images, lambda d: fetch_manifest(args.repository, d), datetime.now(timezone.utc))
+    deleted, failures = ([], []) if args.dry_run else delete_digests(args.repository, layers)
+    order = [d for layer in layers for d in layer]
+    text = summary(args.repository, images, order, reasons, args.dry_run, deleted, failures)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
