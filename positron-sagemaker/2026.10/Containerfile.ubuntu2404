@@ -267,7 +267,7 @@ ENV JSP_POSITRON_LAUNCHER_DISABLED=1
 # POSITRON_LICENSE_MANAGER_PATH (2026.08+). There is no signing key and no
 # baked-in public key to keep paired with the chosen version — the constraint
 # that used to make this line load-bearing is gone.
-ARG POSITRON_VERSION=2026.10.0-297
+ARG POSITRON_VERSION=2026.10.1-2
 
 # CDN channel the Positron Server tarball is pulled from: "releases" for a
 # production build, "dailies" for a development build. Bakery renders the value

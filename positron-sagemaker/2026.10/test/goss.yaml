@@ -48,7 +48,7 @@ command:
     exec: "positron-server --version"
     exit-status: 0
     stdout:
-      - "/^Positron: 2026.10.0 build 297$/"
+      - "/^Positron: 2026.10.1 build 2$/"
   quarto-version:
     exec: "quarto --version"
     exit-status: 0
