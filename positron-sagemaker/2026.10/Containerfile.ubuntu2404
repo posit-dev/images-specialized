@@ -399,7 +399,7 @@ RUN curl -fsSL "https://open-vsx.org/api/amazonwebservices/aws-toolkit-vscode/${
 COPY positron-sagemaker/2026.10/enforced-settings.json /etc/positron/enforced-settings.json
 # Default Bedrock model for the Posit Assistant (a US Claude cross-region
 # inference profile). Overridable at build time with --build-arg.
-ARG POSITRON_BEDROCK_MODEL="us.anthropic.claude-sonnet-4-20250514-v1:0"
+ARG POSITRON_BEDROCK_MODEL="us.anthropic.claude-sonnet-5-5"
 RUN sed -i "s|__POSITRON_BEDROCK_MODEL__|${POSITRON_BEDROCK_MODEL}|" /etc/positron/enforced-settings.json
 
 # Baked default AWS profile (credential_process -> execution role). Copied to a
