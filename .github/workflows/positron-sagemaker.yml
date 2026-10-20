@@ -149,7 +149,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup wizcli
+        id: setup-wizcli
         if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        continue-on-error: true
         uses: "posit-dev/images-shared/setup-wizcli@v0"
 
       # Temp images are pushed to ghcr (GITHUB_TOKEN) only; the final push to the
@@ -200,7 +202,12 @@ jobs:
 
       - name: Scan
         id: wiz-scan
-        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        if: >-
+          ${{
+            steps.filter-steps.outputs.push == 'true' &&
+            steps.filter-steps.outputs.wiz-auth == 'true' &&
+            steps.setup-wizcli.outcome == 'success'
+          }}
         continue-on-error: true
         env:
           IMAGE_NAME: ${{ matrix.img.image }}
