@@ -207,7 +207,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup wizcli
-        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        id: setup-wizcli
+        if: >-
+          ${{
+            steps.filter-steps.outputs.push == 'true' &&
+            steps.filter-steps.outputs.wiz-auth == 'true'
+          }}
+        continue-on-error: true
         uses: "posit-dev/images-shared/setup-wizcli@v0"
 
       - name: Login to GitHub Container Registry
@@ -255,7 +261,12 @@ jobs:
             --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
 
       - name: Scan
-        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        if: >-
+          ${{
+            steps.filter-steps.outputs.push == 'true' &&
+            steps.filter-steps.outputs.wiz-auth == 'true' &&
+            steps.setup-wizcli.outcome == 'success'
+          }}
         continue-on-error: true
         env:
           WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
