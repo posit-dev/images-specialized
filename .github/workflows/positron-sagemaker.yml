@@ -179,7 +179,8 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
 
       - name: Test
         env:
