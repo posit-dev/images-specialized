@@ -40,6 +40,7 @@ USER root
 # Layers are ordered so a routine version bump invalidates as little build
 # cache as possible. The expensive, rarely-changing toolchain runs FIRST:
 #   1. System packages (apt)  — OS upgrade + every plain Ubuntu-repo package, one layer
+#      (then the conda CA-bundle upgrade, its own small layer)
 #   2. R (r-install + P3M binary packages: tidyverse, etc. — the slowest layer)
 #   3. Quarto
 #   4. Posit Professional Drivers (ODBC)
@@ -103,6 +104,18 @@ USER root
 #     volatile layer so a toolkit version bump never re-runs apt).
 RUN {{ apt.update_upgrade(clean = False) | indent(4) }} && \
     {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "unixodbc", "unixodbc-dev", "unzip"], update = False) | trim | indent(4) }}
+
+# --- conda CA trust store ---------------------------------------------------
+# The base's conda env (/opt/conda) does NOT use the OS trust store: its Python
+# and openssl read /opt/conda/ssl/cacert.pem, and certifi ships its own bundle,
+# so the apt upgrade above cannot refresh them. Upgrade conda-forge's
+# ca-certificates + certifi to the latest so a rebuild picks up CA removals
+# (4.4.1-cpu ships 2026.7.22; 2026.10.19+ drops emSign ECC Root G3 and makes the
+# eMudhra test host fail verification). pip vendors its own certifi, so pip is
+# upgraded in the pip install block below. Deliberately unpinned, like
+# rstudio-drivers: a rebuild should always ship the current bundle.
+RUN micromamba update -y -p /opt/conda -c conda-forge ca-certificates certifi && \
+    micromamba clean -afy
 
 # --- R via r.j2 (rstd.io/r-install) + Posit Package Manager (binary CRAN) --
 # r.j2 does not use rig at all — its install() macro runs the same
@@ -203,7 +216,7 @@ ENV ODBCSYSINI=/etc
 RUN pip install --no-cache-dir \
         jupyter-server-proxy 'jupyter-positron-server>=0.0.5' \
         shiny ipykernel matplotlib pyodbc \
-        uv
+        uv pip
 
 # --- Remove Jupyter kernelspecs (Positron-only launcher) -------------------
 # Positron runs its own Python/R runtimes (positron-python / ark) and does not
