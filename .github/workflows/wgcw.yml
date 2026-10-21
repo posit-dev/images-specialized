@@ -1,6 +1,12 @@
 name: WGCW
 on:
   workflow_dispatch:
+    inputs:
+      refresh-cache:
+        description: "Rebuild all layers without reading the build cache, but still write fresh layers to the cache registry [default: false]"
+        type: boolean
+        default: false
+        required: false
 
   schedule:
     # Weekly rebuild, to pick up any upstream changes. Runs after
@@ -164,14 +170,21 @@ jobs:
           DEV_VERSIONS: "exclude"
           MATRIX_VERSIONS: "exclude"
           CACHE_REGISTRY: "us-central1-docker.pkg.dev/cloud-workstations-cache"
+          REFRESH_CACHE: ${{ inputs.refresh-cache || false }}
         run: |
+          # This workflow reads the registry cache but never writes it: bakery only
+          # adds cache-to with --push, and the push step has no --cache-registry.
+          CACHE_FLAGS=(--cache-registry "$CACHE_REGISTRY")
+          if [ "$REFRESH_CACHE" = "true" ]; then
+            CACHE_FLAGS+=(--no-cache)
+          fi
           bakery build --load --pull \
             --retry 1 \
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS" \
-            --cache-registry "$CACHE_REGISTRY"
+            "${CACHE_FLAGS[@]}"
 
       - name: Test
         env:
