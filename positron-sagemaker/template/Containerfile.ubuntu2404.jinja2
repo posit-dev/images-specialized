@@ -25,12 +25,12 @@ Ubuntu release.
 #   docker build --platform linux/amd64 -t positron-sagemaker .
 #
 # The base image tag is pinned rather than tracking `:latest-cpu`, so a base
-# image bump only happens on a deliberate, reviewed bump of this line (see
-# posit-dev/platform-team#457). Bakery's dependency-constraint machinery isn't
-# wired up to the sagemaker-distribution image, so there's no automated drift
-# check on this tag yet; the assertions further down that fail the build if
-# the base image's R/Positron/JupyterLab internals change unexpectedly are the
-# drift protection carried over from the prototype.
+# image bump only happens through a reviewed PR. Renovate (renovate.json, run
+# weekly by .github/workflows/renovate.yml) opens that PR when a new tag is
+# released. Bakery's dependency-constraint machinery isn't wired up to the
+# sagemaker-distribution image; the assertions further down that fail the build
+# if the base image's R/Positron/JupyterLab internals change unexpectedly are
+# the drift protection for a bump.
 # renovate: datasource=docker depName=public.ecr.aws/sagemaker/sagemaker-distribution
 FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.1-cpu
 

@@ -34,3 +34,6 @@ jobs:
         with:
           configurationFile: renovate.json
           token: ${{ steps.app-token.outputs.token }}
+        env:
+          # The self-hosted action does not default to the current repo.
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
