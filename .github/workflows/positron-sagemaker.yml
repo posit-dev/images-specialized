@@ -137,6 +137,23 @@ jobs:
       - name: Setup goss
         uses: "posit-dev/images-shared/setup-goss@v0"
 
+      - name: Filter Steps
+        id: filter-steps
+        env:
+          PUSH_IMAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+          HAS_WIZ_AUTH: ${{ secrets.WIZ_CLIENT_ID != '' }}
+        run: |
+          {
+            echo "push=$PUSH_IMAGE"
+            echo "wiz-auth=$HAS_WIZ_AUTH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup wizcli
+        id: setup-wizcli
+        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' }}
+        continue-on-error: true
+        uses: "posit-dev/images-shared/setup-wizcli@v0"
+
       # Temp images are pushed to ghcr (GITHUB_TOKEN) only; the final push to the
       # customer-facing public ECR happens in the `merge` job, which owns the
       # production AWS_ROLE. So this job needs no AWS credentials -- the
@@ -164,7 +181,8 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
 
       - name: Test
         env:
@@ -179,7 +197,68 @@ jobs:
             --image-name "^${IMAGE_NAME}$" \
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
-            --matrix-versions "$MATRIX_VERSIONS"
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
+
+      - name: Scan
+        id: wiz-scan
+        if: >-
+          ${{
+            steps.filter-steps.outputs.push == 'true' &&
+            steps.filter-steps.outputs.wiz-auth == 'true' &&
+            steps.setup-wizcli.outcome == 'success'
+          }}
+        continue-on-error: true
+        env:
+          IMAGE_NAME: ${{ matrix.img.image }}
+          IMAGE_VERSION: ${{ matrix.img.version }}
+          DEV_VERSIONS: "exclude"
+          MATRIX_VERSIONS: "exclude"
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+          WIZ_POLICY_ID: ${{ secrets.WIZ_POLICY_ID }}
+          WIZ_PROJECT_ID: ${{ secrets.WIZ_PROJECT_ID }}
+        run: |
+          POLICY_FLAGS=()
+          [[ -n "$WIZ_POLICY_ID" ]] && POLICY_FLAGS=(--policies "$WIZ_POLICY_ID")
+          PROJECT_FLAGS=()
+          [[ -n "$WIZ_PROJECT_ID" ]] && PROJECT_FLAGS=(--projects "$WIZ_PROJECT_ID")
+          WIZCLI_PATH=${GITHUB_WORKSPACE}/tools/wizcli \
+          bakery wizcli scan \
+            --image-name "^${IMAGE_NAME}$" \
+            --image-version "$IMAGE_VERSION" \
+            --image-platform linux/amd64 \
+            --dev-versions "$DEV_VERSIONS" \
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --latest \
+            "${POLICY_FLAGS[@]}" \
+            "${PROJECT_FLAGS[@]}" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
+
+      - name: Tag final repositories in Wiz
+        if: ${{ steps.filter-steps.outputs.push == 'true' && steps.filter-steps.outputs.wiz-auth == 'true' && steps.wiz-scan.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          IMAGE_NAME: ${{ matrix.img.image }}
+          IMAGE_VERSION: ${{ matrix.img.version }}
+          DEV_VERSIONS: "exclude"
+          MATRIX_VERSIONS: "exclude"
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+          WIZ_PROJECT_ID: ${{ secrets.WIZ_PROJECT_ID }}
+        run: |
+          PROJECT_FLAGS=()
+          [[ -n "$WIZ_PROJECT_ID" ]] && PROJECT_FLAGS=(--projects "$WIZ_PROJECT_ID")
+          WIZCLI_PATH=${GITHUB_WORKSPACE}/tools/wizcli \
+          bakery wizcli tag \
+            --image-name "^${IMAGE_NAME}$" \
+            --image-version "$IMAGE_VERSION" \
+            --image-platform linux/amd64 \
+            --dev-versions "$DEV_VERSIONS" \
+            --matrix-versions "$MATRIX_VERSIONS" \
+            --latest \
+            "${PROJECT_FLAGS[@]}" \
+            --metadata-file "./${IMAGE_NAME}-${IMAGE_VERSION}-scan-metadata.json"
 
       # Push per-platform temp images to the temp registry (ghcr) and record
       # build metadata. The final product tags are NOT created here -- the
