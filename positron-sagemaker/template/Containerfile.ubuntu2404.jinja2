@@ -39,7 +39,8 @@ USER root
 # --- Layer ordering (stable -> volatile) -----------------------------------
 # Layers are ordered so a routine version bump invalidates as little build
 # cache as possible. The expensive, rarely-changing toolchain runs FIRST:
-#   1. System packages (apt)  — every plain Ubuntu-repo package, one layer
+#   1. System packages (apt)  — OS upgrade + every plain Ubuntu-repo package, one layer
+#      (then the conda CA-bundle upgrade, its own small layer)
 #   2. R (r-install + P3M binary packages: tidyverse, etc. — the slowest layer)
 #   3. Quarto
 #   4. Posit Professional Drivers (ODBC)
@@ -62,7 +63,7 @@ USER root
 # (System packages, below) so there is a single apt-get update for them, and the
 # volatile ARG-gated layers touch apt as little as possible (the AWS Toolkit
 # layer no longer runs apt at all). apt-get update and apt-get install always
-# live in the SAME RUN — the apt.install() macro cleans /var/lib/apt/lists at
+# live in the SAME RUN (the upgrade layer runs update once; install reuses it) — the apt.install() macro cleans /var/lib/apt/lists at
 # the end of each layer, so a later install can never read a stale index.
 #
 # LOAD-BEARING relative order (do NOT reshuffle these blindly):
@@ -75,7 +76,16 @@ USER root
 #     extensions/ dir, which the Positron Server extract creates.
 
 # --- System packages (apt) -------------------------------------------------
-# All plain Ubuntu-repo packages the toolchain needs, installed in a single
+# FIRST this layer upgrades every OS package already in the base image
+# (apt.update_upgrade: apt-get update/upgrade/dist-upgrade/autoremove). The
+# pinned base's OS packages are otherwise frozen at whatever AWS built, so
+# without this a rebuild never picks up Ubuntu security fixes (ca-certificates,
+# openssl, libssl3t64, curl, ...). Verified against 4.4.1-cpu: upgrade and
+# dist-upgrade touch the same packages, with nothing removed or held back.
+# If a future base makes dist-upgrade break SageMaker components, fall back to
+# `apt-get upgrade` or `apt-get install --only-upgrade` for security packages.
+# This does NOT cover the conda env (/opt/conda), which uses its own CA bundle.
+# Then all plain Ubuntu-repo packages the toolchain needs, installed in a single
 # early layer so there is exactly one apt-get update for them and downstream
 # blocks (R, Pro Drivers, AWS Toolkit) do not each re-run apt. Grouped here:
 #   * libzmq3-dev, libuv1t64, libwebpmux3 — SYSTEM libs the P3M binary R
@@ -92,7 +102,20 @@ USER root
 #     libodbc.so.2 for the R `odbc` package's goss drift check.
 #   * unzip — used by the AWS Toolkit layer to unpack the VSIX (kept out of that
 #     volatile layer so a toolkit version bump never re-runs apt).
-RUN {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "unixodbc", "unixodbc-dev", "unzip"]) | trim | indent(4) }}
+RUN {{ apt.update_upgrade(clean = False) | indent(4) }} && \
+    {{ apt.install(packages = ["libzmq3-dev", "libuv1t64", "libwebpmux3", "unixodbc", "unixodbc-dev", "unzip"], update = False) | trim | indent(4) }}
+
+# --- conda CA trust store ---------------------------------------------------
+# The base's conda env (/opt/conda) does NOT use the OS trust store: its Python
+# and openssl read /opt/conda/ssl/cacert.pem, and certifi ships its own bundle,
+# so the apt upgrade above cannot refresh them. Upgrade conda-forge's
+# ca-certificates + certifi to the latest so a rebuild picks up CA removals
+# (4.4.1-cpu ships 2026.7.22; 2026.10.19+ drops emSign ECC Root G3 and makes the
+# eMudhra test host fail verification). pip vendors its own certifi, so pip is
+# upgraded in the pip install block below. Deliberately unpinned, like
+# rstudio-drivers: a rebuild should always ship the current bundle.
+RUN micromamba update -y -p /opt/conda -c conda-forge ca-certificates certifi && \
+    micromamba clean -afy
 
 # --- R via r.j2 (rstd.io/r-install) + Posit Package Manager (binary CRAN) --
 # r.j2 does not use rig at all — its install() macro runs the same
@@ -193,7 +216,7 @@ ENV ODBCSYSINI=/etc
 RUN pip install --no-cache-dir \
         jupyter-server-proxy 'jupyter-positron-server>=0.0.5' \
         shiny ipykernel matplotlib pyodbc \
-        uv
+        uv pip
 
 # --- Remove Jupyter kernelspecs (Positron-only launcher) -------------------
 # Positron runs its own Python/R runtimes (positron-python / ark) and does not

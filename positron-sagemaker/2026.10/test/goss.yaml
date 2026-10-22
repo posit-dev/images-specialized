@@ -40,6 +40,21 @@ command:
     stdout:
       - "/^\\/opt\\/conda\\/bin\\/python3$/"
 
+  # --- CA trust stores are current (posit-dev/images-specialized#123) -------
+  # OS bundle: the build upgrades ca-certificates, so it must be at least the
+  # first version that no longer ships the emSign distrusted by the conda bump.
+  ca-certificates-os-current:
+    exec: "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' ca-certificates)\" ge 20260816"
+    exit-status: 0
+  # conda env: certifi + conda's ca-certificates are upgraded, and the bundle
+  # /opt/conda/ssl/cacert.pem has no emSign ECC Root G3.
+  conda-certifi-current:
+    exec: "python -c \"import certifi,ssl; v=tuple(map(int,certifi.__version__.split('.'))); assert v>=(2026,10,19), v\""
+    exit-status: 0
+  conda-ssl-bundle-current:
+    exec: "! grep -q 'emSign ECC Root CA - G3' /opt/conda/ssl/cacert.pem"
+    exit-status: 0
+
   # --- Installed versions match the pinned values ---------------------------
   # positron-server prints "Positron: <version> build <build>" for a version
   # string of the form "<version>-<build>" (e.g. "2026.07.1-5"); the CDN
