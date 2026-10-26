@@ -1,6 +1,5 @@
 cmake
 default-jdk
-gdal-bin
 gdb
 git
 gsfonts
@@ -14,7 +13,6 @@ libedit2
 libfontconfig1-dev
 libfreetype-dev
 libfribidi-dev
-libgdal-dev
 libgeos-dev
 libgl-dev
 libglib2.0-0t64
