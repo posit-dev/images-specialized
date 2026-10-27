@@ -60,6 +60,13 @@ concurrency:
   group: positron-sagemaker-development-image-build
   cancel-in-progress: true
 
+# Matches images-shared's build workflows: GitHub's default Linux shell is
+# `bash -e`, which leaves pipefail off, so a failing first stage of a pipeline
+# is silently swallowed. `shell: bash` is `bash --noprofile --norc -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   ci:
     name: CI
@@ -74,12 +81,14 @@ jobs:
     timeout-minutes: 10
     needs:
       - dev
+      - cleanup-preview-versions
 
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
         id: alls-green
         with:
           jobs: ${{ toJSON(needs) }}
+          allowed-skips: cleanup-preview-versions
       - if: always() && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: posit-dev/images-shared/.github/actions/slack-build-notify@v0
@@ -254,3 +263,97 @@ jobs:
             --image-version "$IMAGE_VERSION" \
             --dev-versions "$DEV_VERSIONS" \
             --matrix-versions "$MATRIX_VERSIONS"
+
+      # Preview builds are already in private ECR; register the pushed tag
+      # without copying a release image from public ECR. A rebuilt daily
+      # reuses the same tag with a new digest, so the alias is repointed by
+      # comparing BaseImage digests instead of skipping once ever registered.
+      - name: Register preview image version
+        if: ${{ (github.event_name == 'schedule' || inputs.push) && github.ref == 'refs/heads/main' }}
+        env:
+          TAG: ${{ matrix.img.version }}
+          REPO: positron-sagemaker-preview
+          REGISTRY: 935931255537.dkr.ecr.us-east-2.amazonaws.com
+          REGION: us-east-2
+        run: |
+          DIGEST=$(aws ecr describe-images --repository-name "$REPO" \
+            --image-ids "imageTag=$TAG" --region "$REGION" \
+            --query 'imageDetails[0].imageDigest' --output text)
+          BASE_IMAGE="$REGISTRY/$REPO@$DIGEST"
+
+          # list-aliases only proves $TAG is registered somewhere; it never
+          # maps an alias back to a version. describe-image-version --alias
+          # returns AccessDeniedException for a nonexistent alias -- the same
+          # as a real permissions failure (see sagemaker-mirror/action.yml) --
+          # so only call it once list-aliases has confirmed the alias exists.
+          OLD_VERSION=''
+          ALIASES=$(aws sagemaker list-aliases --image-name "$REPO" \
+            --region "$REGION" --query 'SageMakerImageVersionAliases' --output json)
+          if jq -e --arg tag "$TAG" 'index($tag) != null' <<<"$ALIASES" >/dev/null; then
+            read -r OLD_VERSION OLD_BASE_IMAGE < <(aws sagemaker describe-image-version \
+              --image-name "$REPO" --alias "$TAG" --region "$REGION" \
+              --query '[Version, BaseImage]' --output text)
+            if [[ "$OLD_BASE_IMAGE" == "$BASE_IMAGE" ]]; then
+              echo "Tag $TAG is already registered against $BASE_IMAGE."
+              exit 0
+            fi
+          fi
+
+          VERSION=$(aws sagemaker create-image-version --image-name "$REPO" \
+            --base-image "$BASE_IMAGE" --region "$REGION" \
+            --query 'ImageVersionArn' --output text | awk -F/ '{print $NF}')
+
+          STATUS=''
+          for _ in $(seq 30); do
+            read -r STATUS REASON < <(aws sagemaker describe-image-version \
+              --image-name "$REPO" --version-number "$VERSION" --region "$REGION" \
+              --query '[ImageVersionStatus, FailureReason]' --output text)
+            [[ "$STATUS" == 'CREATED' ]] && break
+            [[ "$STATUS" == 'CREATE_FAILED' ]] && { echo "::error::ImageVersion $VERSION failed: $REASON"; exit 1; }
+            sleep 10
+          done
+          if [[ "$STATUS" != 'CREATED' ]]; then
+            echo "::error::Timed out waiting for ImageVersion $VERSION (last status: $STATUS)"
+            exit 1
+          fi
+
+          # A failed version cannot release its alias; move the alias only
+          # after the new version is confirmed CREATED, so a failed rebuild
+          # never leaves $TAG unregistered.
+          if [[ -n "$OLD_VERSION" ]]; then
+            aws sagemaker update-image-version --image-name "$REPO" \
+              --version-number "$OLD_VERSION" --aliases-to-delete "$TAG" --region "$REGION" \
+              --query 'ImageVersionArn' --output text
+          fi
+          aws sagemaker update-image-version --image-name "$REPO" \
+            --version-number "$VERSION" --aliases-to-add "$TAG" --region "$REGION" \
+            --query 'ImageVersionArn' --output text
+
+  cleanup-preview-versions:
+    name: Clean up expired preview versions
+    # ECR expires images independently of CI; run even when the build fails.
+    # !cancelled(), not always(): always() stays true even when this run was
+    # cancelled (e.g. superseded by cancel-in-progress), which would run this
+    # destructive job against AWS alongside the run that replaced it.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.push) }}
+    needs: dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v6.2.4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-2
+
+      - name: Remove preview versions without ECR images
+        run: .github/scripts/cleanup-preview-sagemaker-versions.sh
