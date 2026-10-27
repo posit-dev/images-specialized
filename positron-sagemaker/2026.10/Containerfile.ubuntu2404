@@ -20,7 +20,7 @@
 # if the base image's R/Positron/JupyterLab internals change unexpectedly are
 # the drift protection for a bump.
 # renovate: datasource=docker depName=public.ecr.aws/sagemaker/sagemaker-distribution
-FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.4.1-cpu
+FROM public.ecr.aws/sagemaker/sagemaker-distribution:4.6.1-cpu
 
 USER root
 
