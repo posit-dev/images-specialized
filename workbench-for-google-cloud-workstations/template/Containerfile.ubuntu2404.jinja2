@@ -29,7 +29,7 @@ ENV LC_ALL=en_US.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY {{ Path.Version }}/deps/apt_packages.txt /tmp/apt_packages.txt
 {% if Image.Variant != "Minimal" %}COPY {{ Path.Version }}/deps/optional_apt_packages.txt /tmp/optional_apt_packages.txt{% endif %}
-RUN {{ apt.setup(clean = False) | indent(4) }} && \
+RUN {{ apt.setup(clean = False, pro_repo = True, open_repo = True) | indent(4) }} && \
     {% if Image.Variant == "Minimal" -%}
     {{ apt.install(files = ['/tmp/apt_packages.txt'], update = False) | indent(4) }} && \
     {% else -%}

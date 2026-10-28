@@ -41,7 +41,7 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 RUN userdel -r ubuntu
 
 ### Setup environment ###
-{{ apt.run_setup() }}
+{{ apt.run_setup(pro_repo = True, open_repo = True) }}
 
 ## Install Apt Packages ###
 {% if not Image.Variant == "Minimal" -%}
