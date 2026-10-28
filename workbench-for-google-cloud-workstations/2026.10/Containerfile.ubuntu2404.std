@@ -37,8 +37,9 @@ RUN echo 'Acquire::Retries "3"; Acquire::http::Timeout "30"; Acquire::https::Tim
     apt-get install -yqq --no-install-recommends locales && \
     localedef -i en_US -f UTF-8 en_US.UTF-8 && \
     bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
-    xargs -a /tmp/apt_packages.txt apt-get install -yqq --no-install-recommends && \
-    xargs -a /tmp/optional_apt_packages.txt apt-get install -yqq --no-install-recommends && \
+    bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
+    test -f /tmp/apt_packages.txt && sed 's/#.*//' /tmp/apt_packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
+    test -f /tmp/optional_apt_packages.txt && sed 's/#.*//' /tmp/optional_apt_packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/* && \
     cp /opt/rstudio-drivers/odbcinst.ini.sample /etc/odbcinst.ini && \

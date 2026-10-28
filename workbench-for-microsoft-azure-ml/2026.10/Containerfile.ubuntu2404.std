@@ -52,6 +52,7 @@ RUN echo 'Acquire::Retries "3"; Acquire::http::Timeout "30"; Acquire::https::Tim
     apt-get install -yqq --no-install-recommends locales && \
     localedef -i en_US -f UTF-8 en_US.UTF-8 && \
     bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
+    bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/*
 ENV LANG=en_US.UTF-8
@@ -62,8 +63,8 @@ ENV LC_ALL=en_US.UTF-8
 COPY workbench-for-microsoft-azure-ml/2026.10/deps/apt_packages.txt /tmp/packages.txt
 COPY workbench-for-microsoft-azure-ml/2026.10/deps/optional_apt_packages.txt /tmp/optional_packages.txt
 RUN apt-get update -yqq && \
-    xargs -a /tmp/packages.txt apt-get install -yqq --no-install-recommends && \
-    xargs -a /tmp/optional_packages.txt apt-get install -yqq --no-install-recommends && \
+    test -f /tmp/packages.txt && sed 's/#.*//' /tmp/packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
+    test -f /tmp/optional_packages.txt && sed 's/#.*//' /tmp/optional_packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/packages.txt /tmp/optional_packages.txt
