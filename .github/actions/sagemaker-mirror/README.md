@@ -33,7 +33,7 @@ asynchronously and would silently leave the job green without this check.
 - name: Mirror
   uses: posit-dev/images-specialized/.github/actions/sagemaker-mirror@main
   with:
-    tag: "2026.09.0-124"
+    tag: "2026.10.1-124"
     target-ecr-registry: 123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
@@ -45,7 +45,7 @@ role must allow.
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `tag` | Yes | — | Version tag to mirror (e.g. `2026.09.0-124`). |
+| `tag` | Yes | — | Version tag to mirror (e.g. `2026.10.1-124`). |
 | `source-image` | No | `public.ecr.aws/posit/positron-sagemaker` | Public ECR image URI without tag. |
 | `target-ecr-registry` | Yes | — | Private ECR registry host (e.g. `123456789012.dkr.ecr.us-east-1.amazonaws.com`). The AWS region and account ID are derived from this value and used for all ECR and SageMaker API calls. |
 | `target-repository` | No | `positron-sagemaker` | Repository name in the private ECR registry. |
