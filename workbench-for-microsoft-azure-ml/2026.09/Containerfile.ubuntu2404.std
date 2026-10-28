@@ -52,6 +52,7 @@ RUN echo 'Acquire::Retries "3"; Acquire::http::Timeout "30"; Acquire::https::Tim
     apt-get install -yqq --no-install-recommends locales && \
     localedef -i en_US -f UTF-8 en_US.UTF-8 && \
     bash -c "$(curl -1fsSL 'https://dl.posit.co/public/pro/setup.deb.sh')" && \
+    bash -c "$(curl -1fsSL 'https://dl.posit.co/public/open/setup.deb.sh')" && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/*
 ENV LANG=en_US.UTF-8
@@ -62,8 +63,8 @@ ENV LC_ALL=en_US.UTF-8
 COPY workbench-for-microsoft-azure-ml/2026.09/deps/apt_packages.txt /tmp/packages.txt
 COPY workbench-for-microsoft-azure-ml/2026.09/deps/optional_apt_packages.txt /tmp/optional_packages.txt
 RUN apt-get update -yqq && \
-    xargs -a /tmp/packages.txt apt-get install -yqq --no-install-recommends && \
-    xargs -a /tmp/optional_packages.txt apt-get install -yqq --no-install-recommends && \
+    test -f /tmp/packages.txt && sed 's/#.*//' /tmp/packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
+    test -f /tmp/optional_packages.txt && sed 's/#.*//' /tmp/optional_packages.txt | xargs -r apt-get install -yqq --no-install-recommends && \
     apt-get clean -yqq && \
     rm -rf /var/lib/apt/lists/* && \
     rm -f /tmp/packages.txt /tmp/optional_packages.txt
@@ -105,8 +106,11 @@ RUN apt-get update -yqq && \
 COPY --from=python-builder /opt/python /opt/python
 
 ### Install R ###
-RUN RUN_UNATTENDED=1 R_VERSION=4.6.1 bash -c "$(curl -fsSL https://rstd.io/r-install)" && \
-    find . -type f -name '[rR]-4.6.1.*\.(deb|rpm)' -delete
+RUN apt-get update -yqq && \
+    apt-get install -yqq --no-install-recommends \
+        r-4.6.1 && \
+    apt-get clean -yqq && \
+    rm -rf /var/lib/apt/lists/*
 
 ### Install Jupyter ###
 RUN /opt/python/3.14.7/bin/python -m venv /opt/python/jupyter && \
