@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Apply the retention policy to a public ECR repository (ECR Public has no lifecycle policies).
+
+Tagged images are deleted once imagePushedAt is older than --tagged-days, except digests carrying a
+protected tag. Untagged images are deleted after --untagged-days unless a kept tagged image references
+them (index children, SOCI annotations, subject referrers, walked transitively) -- those children are untagged in ECR but
+required to pull the tag.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+
+REGION = "us-east-1"
+REGISTRY = "public.ecr.aws/posit"
+PROTECTED_TAGS = frozenset({"latest", "std", "min"})
+TAGGED_DAYS = 548
+UNTAGGED_DAYS = 30
+BATCH_SIZE = 100
+
+
+def run(cmd):
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+
+
+def describe_images(repo):
+    out = run(["aws", "ecr-public", "describe-images", "--region", REGION, "--repository-name", repo, "--output", "json"])
+    return json.loads(out)["imageDetails"]
+
+
+def fetch_manifest(repo, digest):
+    return json.loads(run(["oras", "manifest", "fetch", f"{REGISTRY}/{repo}@{digest}"]))
+
+
+def parse_time(value):
+    # Python < 3.11 fromisoformat rejects a trailing "Z"
+    t = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def references(manifest):
+    """Digests a manifest depends on: index children and com.amazon.soci.* annotation values."""
+    refs = [m["digest"] for m in manifest.get("manifests", [])]
+    annotated = [manifest.get("annotations", {})] + [m.get("annotations", {}) for m in manifest.get("manifests", [])]
+    refs += [v for a in annotated for k, v in a.items() if k.startswith("com.amazon.soci.") and v.startswith("sha256:")]
+    return refs
+
+
+def require_complete(manifests):
+    """Fail closed: a referenced digest we hold no manifest for could hide a chain to a kept image."""
+    for digest, manifest in manifests.items():
+        for ref in references(manifest):
+            if ref not in manifests:
+                raise SystemExit(f"{digest} references {ref}, which is missing from the repository inventory; aborting before any deletion")
+
+
+def keep_closure(roots, manifests):
+    """Every digest reachable from roots: index children, SOCI annotation digests, and referrers whose
+    subject is already kept (which are themselves walked)."""
+    referrers = {}
+    for digest, manifest in manifests.items():
+        subject = manifest.get("subject", {}).get("digest")
+        if subject:
+            referrers.setdefault(subject, []).append(digest)
+    # A subject absent from the inventory is not an error: it is not needed to pull the referrer
+    # (dangling referrers are legal OCI), unlike index children / SOCI digests above.
+    require_complete(manifests)
+    keep, stack = set(roots), list(roots)
+    while stack:
+        digest = stack.pop()
+        for ref in references(manifests[digest]) + referrers.get(digest, []):
+            if ref not in keep:
+                keep.add(ref)
+                stack.append(ref)
+    return keep
+
+
+def delete_layers(delete, manifests):
+    """Split digests into layers; each layer only holds digests no other undeleted digest in the set
+    references. A manifest list (or SOCI index, or referrer) must go before what it points at: ECR rejects
+    deleting an image still referenced by a manifest list (ImageReferencedByManifestList)."""
+    blockers = {d: set() for d in delete}  # d -> digests that must be deleted before d
+    for d in delete:
+        manifest = manifests[d]
+        for ref in references(manifest):
+            if ref in delete:
+                blockers[ref].add(d)
+        subject = manifest.get("subject", {}).get("digest")
+        if subject in delete:
+            blockers[subject].add(d)
+    layers = []
+    while blockers:
+        layer = [d for d, b in blockers.items() if not b]
+        if not layer:
+            raise SystemExit("reference cycle among digests to delete")
+        layers.append(layer)
+        for d in layer:
+            del blockers[d]
+        for b in blockers.values():
+            b.difference_update(layer)
+    return layers
+
+
+def plan_repo(images, fetch, now, protected=PROTECTED_TAGS, tagged_days=TAGGED_DAYS, untagged_days=UNTAGGED_DAYS):
+    """Return (delete_layers, reasons): the digests safe to delete, in dependency layers."""
+    tagged_cutoff = now - timedelta(days=tagged_days)
+    untagged_cutoff = now - timedelta(days=untagged_days)
+    candidates = {}
+    for i in images:
+        tags = i.get("imageTags")
+        if tags and not protected.intersection(tags) and parse_time(i["imagePushedAt"]) < tagged_cutoff:
+            candidates[i["imageDigest"]] = "expired tagged image"
+        elif not tags and parse_time(i["imagePushedAt"]) < untagged_cutoff:
+            candidates[i["imageDigest"]] = "untagged, unreferenced"
+    manifests = {i["imageDigest"]: fetch(i["imageDigest"]) for i in images}
+    # Everything that is not a candidate survives, and so does everything it reaches -- including candidates.
+    keep = keep_closure([i["imageDigest"] for i in images if i["imageDigest"] not in candidates], manifests)
+    delete = {d: r for d, r in candidates.items() if d not in keep}
+    if any(i.get("imageTags") for i in images) and all(
+            i["imageDigest"] in delete for i in images if i.get("imageTags")):
+        raise SystemExit("refusing to delete every tagged image in the repository")
+    return delete_layers(delete, manifests), delete
+
+
+def delete_digests(repo, layers):
+    """Delete layer by layer; stop at the first failure. Returns (deleted_digests, failures)."""
+    deleted, failures = [], []
+    for layer in layers:
+        for n in range(0, len(layer), BATCH_SIZE):
+            chunk = layer[n:n + BATCH_SIZE]
+            cmd = ["aws", "ecr-public", "batch-delete-image", "--region", REGION, "--repository-name", repo,
+                   "--image-ids", *[f"imageDigest={d}" for d in chunk], "--output", "json"]
+            try:
+                result = json.loads(run(cmd))
+            except subprocess.CalledProcessError as e:
+                return deleted, [f"{d}: {e.stderr.strip()}" for d in chunk]
+            deleted += [i["imageDigest"] for i in result.get("imageIds", []) if "imageDigest" in i]
+            failures += [f"{f['imageId'].get('imageDigest')}: {f.get('failureReason')}" for f in result.get("failures", [])]
+            if failures:
+                return deleted, failures
+    return deleted, failures
+
+
+def summary(repo, images, order, reasons, dry_run, deleted, failures):
+    tags = {i["imageDigest"]: ",".join(i.get("imageTags", [])) or "-" for i in images}
+    pushed = {i["imageDigest"]: i["imagePushedAt"] for i in images}
+    lines = [f"### {repo} ({'dry run, nothing deleted' if dry_run else f'deleted {len(deleted)} of {len(order)} planned'}; {len(images)} images)", ""]
+    if order:
+        lines += ["| Digest | Tags | Pushed | Reason |", "|---|---|---|---|"]
+        lines += [f"| `{d}` | {tags[d]} | {pushed[d]} | {reasons[d]} |" for d in order]
+    if failures:
+        lines += ["", "**Failures:**"] + [f"- {f}" for f in failures]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("repository")
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args(argv)
+
+    images = describe_images(args.repository)
+    layers, reasons = plan_repo(images, lambda d: fetch_manifest(args.repository, d), datetime.now(timezone.utc))
+    deleted, failures = ([], []) if args.dry_run else delete_digests(args.repository, layers)
+    order = [d for layer in layers for d in layer]
+    text = summary(args.repository, images, order, reasons, args.dry_run, deleted, failures)
+    print(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(text)
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
