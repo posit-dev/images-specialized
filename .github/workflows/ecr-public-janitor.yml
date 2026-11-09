@@ -1,0 +1,83 @@
+name: ECR Public Janitor
+
+# Enforces image retention on public.ecr.aws/posit (ECR Public has no lifecycle
+# policies). Scheduled runs delete for real; manual runs default to dry-run.
+
+on:
+  # Enable the schedule after both production dry runs (positron-sagemaker, rstudio-sagemaker) are reviewed (#112).
+  # schedule:
+  #   # Monday 07:00 UTC (renovate holds 06:00 Monday).
+  #   - cron: "0 7 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print the deletion plan without deleting anything.
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  janitor:
+    name: Janitor ${{ matrix.repository }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: [positron-sagemaker, rstudio-sagemaker]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test
+        run: python3 -m unittest discover -s scripts
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_JANITOR_ROLE }}
+          aws-region: us-east-1
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+
+      - name: Run janitor
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          # Empty on schedule, where only an explicit "true" means dry-run.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          scripts/ecr-public-janitor "$REPOSITORY" "${args[@]}"
+
+  notify:
+    name: Notify
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    timeout-minutes: 10
+    needs:
+      - janitor
+    steps:
+      - if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: posit-dev/images-shared/.github/actions/slack-build-notify@v0
+        with:
+          result: ${{ needs.janitor.result == 'success' && 'success' || 'failure' }}
+          slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
