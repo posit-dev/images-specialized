@@ -153,7 +153,7 @@ images:
           - host: "935931255537.dkr.ecr.us-east-2.amazonaws.com"
             repository: "positron-sagemaker-preview"
     versions:
-      - name: 2026.11.0-308
+      - name: 2026.11.1-4
         subpath: '2026.11'
         latest: true
         os:
