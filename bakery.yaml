@@ -61,15 +61,15 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.10.1+239.pro3
-        subpath: '2026.10'
+      - name: 2026.11.0+203.pro4
+        subpath: '2026.11'
         latest: true
         os:
           - name: Ubuntu 24.04
             primary: true
         dependencies:
           - dependency: R
-            version: 4.6.1
+            version: 4.6.2
           - dependency: python
             version: 3.15.2
   - name: workbench-for-microsoft-azure-ml
@@ -96,15 +96,15 @@ images:
         extension: min
         tagDisplayName: min
     versions:
-      - name: 2026.10.1+239.pro3
-        subpath: '2026.10'
+      - name: 2026.11.0+203.pro4
+        subpath: '2026.11'
         latest: true
         os:
           - name: Ubuntu 24.04
             primary: true
         dependencies:
           - dependency: R
-            version: 4.6.1
+            version: 4.6.2
           - dependency: python
             version: 3.15.2
   - name: positron-sagemaker
