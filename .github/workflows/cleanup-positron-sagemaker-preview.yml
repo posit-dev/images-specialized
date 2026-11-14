@@ -1,0 +1,47 @@
+name: Clean up Positron SageMaker preview versions
+
+on:
+  schedule:
+    - cron: "30 10 * * *" # Daily at 10:30 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report eligible versions without deleting them"
+        type: boolean
+        default: true
+
+concurrency:
+  group: positron-sagemaker-preview-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Clean up expired preview versions
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v6.2.4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: us-east-2
+
+      - name: Clean up preview versions without ECR images
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == true ]]; then
+            args+=(--dry-run)
+          fi
+          .github/scripts/cleanup-preview-sagemaker-versions.sh "${args[@]}"
