@@ -10,7 +10,7 @@ package:
   rstudio-server:
     installed: true
     versions:
-    - 2026.11.0+203.pro4
+    - 2026.11.1+204.pro2
 
   r-4.6.2:
     installed: true
@@ -171,11 +171,11 @@ command:
   Test rstudio-server.log creation:
     exec: touch /var/log/rstudio-server.log
     exit-status: 0
-  Check RStudio Workbench version is 2026.11.0+203.pro4:
+  Check RStudio Workbench version is 2026.11.1+204.pro2:
     exec: rstudio-server version
     exit-status: 0
     stdout: [
-       "2026.11.0+203.pro4",
+       "2026.11.1+204.pro2",
        "Workbench"
      ]
   Test Jupyter works:
