@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04"
 
 ### ARG declarations ###
 ARG DEBIAN_FRONTEND=noninteractive
-ARG WORKBENCH_VERSION="2026.11.0+203.pro4"
+ARG WORKBENCH_VERSION="2026.11.1+204.pro2"
 ARG RSTUDIO_INSTALL_NO_LICENSE_INITIALIZATION=1
 
 ENV STARTUP_DEBUG_MODE=0
@@ -76,7 +76,7 @@ COPY --chmod=0755 workbench-for-microsoft-azure-ml/scripts/wait-for-it.sh /usr/l
 RUN curl -fsSL https://aka.ms/InstallAzureCLIDeb | bash \
     && az extension add -n ml -y
 
-### Install Workbench 2026.11.0+203.pro4 ###
+### Install Workbench 2026.11.1+204.pro2 ###
 COPY --chmod=0755 workbench-for-microsoft-azure-ml/2026.11/scripts/install_workbench.sh /tmp/install_workbench.sh
 
 RUN \
@@ -140,7 +140,8 @@ ln -s /opt/python/3.15.2 /opt/python/default
 
 ### Install R Packages ###
 COPY workbench-for-microsoft-azure-ml/2026.11/deps/r_packages.txt /tmp/r_packages.txt
-RUN /opt/R/4.6.2/bin/R --vanilla -e 'install.packages(readLines("/tmp/r_packages.txt"), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)' && \
+RUN /opt/R/4.6.2/bin/R --vanilla -e 'options(warn = 2); install.packages(scan("/tmp/r_packages.txt", what = "", quiet = TRUE), repos="https://p3m.dev/cran/__linux__/noble/latest", clean = TRUE)' && \
+    /opt/R/4.6.2/bin/R --vanilla -e 'not_installed <- setdiff(scan("/tmp/r_packages.txt", what = "", quiet = TRUE), rownames(installed.packages())); if (length(not_installed)) stop("Failed to install R packages: ", paste(not_installed, collapse = ", "))' && \
     rm -f /tmp/r_packages.txt && \
     rm -f /tmp/r_packages.txt
 
