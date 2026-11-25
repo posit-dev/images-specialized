@@ -119,6 +119,8 @@ images:
     options:
       - tool: soci
         enabled: true
+      - tool: trivy
+        timeout: 15m
     extraRegistries:
       - host: "public.ecr.aws"
         namespace: "posit"
